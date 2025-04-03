@@ -9,8 +9,8 @@ This project implements an AI agent capable of interacting with a PostgreSQL dat
 *   **Dynamic Schema Retrieval:** Fetches the database schema dynamically at startup using an MCP call to the PostgreSQL server, ensuring the agent uses the current schema.
 *   **Intent Classification:** Determines if the user's request is a `SELECT` query or an unsupported operation (INSERT, UPDATE, DELETE, etc.).
 *   **SQL Validation:** Uses an LLM to perform basic validation and potential correction of the generated SQL.
-*   **MCP Database Interaction:** Connects to a PostgreSQL database via a dedicated MCP server (`mcp_postgres`) to execute the generated `SELECT` queries using the `mcp` Python library. (Note: Currently uses a placeholder function in the UI).
-*   **MCP Logging:** Prepares requests to log generated SQL and errors to a file (`/data/output.txt` within the filesystem container) via an MCP filesystem server. (Note: Also uses placeholder execution and overwrites the file).
+*   **MCP Database Interaction:** Connects to a PostgreSQL database via a dedicated MCP server (`mcp_postgres`) to execute the generated `SELECT` queries using the `mcp` Python library.
+*   **MCP Logging:** Appends generated SQL and errors to a log file (`/data/output.txt` within the filesystem container) via the `append_file` tool of an MCP filesystem server.
 *   **Gradio Web Interface:** Provides a user-friendly chat interface for interaction, displaying the conversation, agent steps (thoughts), generated SQL, prepared MCP requests, and query results.
 *   **RAG (Retrieval-Augmented Generation):** Includes components for RAG using ChromaDB and OpenAI embeddings, initialized at startup but requires manual population.
 *   **LangSmith Tracing (Optional):** Can be configured via environment variables to trace agent execution using LangSmith.
@@ -56,7 +56,7 @@ The agent's logic is defined as a state machine using **LangGraph**. The core wo
     *   Displays the chat history, agent thoughts, SQL, and prepared MCP requests.
     *   Calls the `execute_mcp_tool` function (from `app/utils/mcp_utils.py`) to perform real MCP interactions for:
         *   Database queries (`mcp_postgres` server).
-        *   Logging SQL/errors (`mcp_filesystem` server's `write_file` tool).
+        *   Appending SQL/errors to log file (`mcp_filesystem` server's `append_file` tool).
     *   Displays query results (or errors) received from the MCP server in a DataFrame.
     *   Adds logging status/errors to the execution status display.
 
@@ -161,7 +161,6 @@ graph TD
 ## Limitations & Future Work
 
 *   **DML/DDL Unsupported:** The agent only supports `SELECT` queries due to intent classification and the assumed read-only nature of the MCP postgres `query` tool.
-*   **Log File Overwrite:** Logging via the MCP filesystem server uses `write_file`, which overwrites `output.txt` on each execution. True appending would require server support or a more complex read-modify-write pattern via MCP.
 *   **RAG Population:** The RAG vector stores (ChromaDB) are initialized but require a mechanism to populate them with relevant SQL examples or documents (e.g., using the placeholder `kb_button` or automatically).
 *   **NLP Robustness:** The `nlp_agent_node` relies on parsing JSON from LLM string output, which can be brittle. Using LLM functions/tools or more constrained output formats could improve reliability.
 *   **Error Handling:** UI feedback for MCP connection errors, query execution errors, or graph failures could be more specific and user-friendly.

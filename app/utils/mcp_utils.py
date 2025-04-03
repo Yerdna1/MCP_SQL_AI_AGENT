@@ -25,13 +25,9 @@ def prepare_mcp_sql_query_request(sql_query: str) -> Dict[str, Any]:
 
 def prepare_mcp_log_request(sql: str, error: Optional[str] = None) -> Dict[str, Any]:
     """
-    Prepares the arguments dictionary for an MCP filesystem.write_file request
+    Prepares the arguments dictionary for an MCP filesystem.append_file request
     to log the SQL query.
     This dictionary should be displayed to the user for execution via their MCP client.
-
-    NOTE: This uses 'write_file' which OVERWRITES the target file.
-          True appending requires server support or a read-modify-write pattern.
-          A marker 'APPEND_REQUEST:' is added to signal intent.
 
     Args:
         sql: The SQL query string that was generated/executed.
@@ -44,18 +40,16 @@ def prepare_mcp_log_request(sql: str, error: Optional[str] = None) -> Dict[str, 
     log_content += f"SQL: {sql}\n"
     if error:
         log_content += f"Error: {error}\n"
-    log_content += "-" * 20 + "\n\n"
+    log_content += "-" * 20 + "\n\n" # Add separator after each entry
 
-    # Prepend marker to indicate append intent, even though write_file overwrites.
-    final_content = f"APPEND_REQUEST:\n{log_content}"
-
-    logger.info(f"Preparing MCP log request (will overwrite '/data/output.txt')")
+    # No need for marker, using append_file tool directly
+    logger.info(f"Preparing MCP log append request for '/data/output.txt'")
     return {
         "server_name": "mcp_filesystem", # Matches service name in docker-compose.yml
-        "tool_name": "write_file",
+        "tool_name": "append_file", # Use the append tool
         "arguments": {
             "path": "/data/output.txt", # Path inside the filesystem container volume mount
-            "content": final_content
+            "content": log_content # Content to append
         }
     }
 
