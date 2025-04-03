@@ -104,8 +104,8 @@ async def run_agent_graph_interface(
         "messages": messages,
         "selected_llm_name": selected_llm_name,
         "agent_thoughts": [],
-        "db_schema": db_schema,
-        "schema_error": schema_error, # Pass schema status
+        "db_schema": db_schema, # Ensure global db_schema is passed
+        "schema_error": schema_error, # Ensure global schema_error is passed
         "refined_query": None, "relevant_tables": None, "generated_sql": None,
         "validated_sql": None, "mcp_query_request": None, "mcp_log_request": None,
         "error_message": None
@@ -306,9 +306,15 @@ async def update_sql_kb_handler() -> str:
         logger.info(f"MCP Read File Response: {read_response}")
 
         if not read_response.get("success"):
-            error_msg = f"Failed to read {saved_sql_path} via MCP: {read_response.get('error', 'Unknown error')}"
-            logger.error(error_msg)
-            return f"Error: {error_msg}"
+            error_msg = read_response.get('error', 'Unknown MCP error')
+            # Check if the error indicates file not found (adjust pattern as needed based on server)
+            if "not found" in error_msg.lower() or "no such file" in error_msg.lower():
+                 logger.warning(f"Saved SQL file {saved_sql_path} not found via MCP.")
+                 return "Saved SQL file not found. No queries added to KB yet."
+            else:
+                 # Handle other MCP errors
+                 logger.error(f"Failed to read {saved_sql_path} via MCP: {error_msg}")
+                 return f"Error reading saved SQL file: {error_msg}"
 
         # Content should be in result if successful (check mcp_utils parsing)
         file_content = read_response.get("result")
@@ -333,12 +339,9 @@ async def update_sql_kb_handler() -> str:
         # 4. Add queries to ChromaDB
         added_count, status_msg = add_sql_examples_to_db(sql_queries)
 
-        return status_msg
+        return status_msg # Return the status from the add function
 
-    except FileNotFoundError:
-         logger.warning(f"Saved SQL file {saved_sql_path} not found via MCP.")
-         return "Saved SQL file not found. No queries added to KB."
-    except Exception as e:
+    except Exception as e: # Catch other potential exceptions during processing
         error_msg = f"Error during SQL KB update: {e}"
         logger.error(error_msg, exc_info=True)
         return f"Error: {error_msg}"
