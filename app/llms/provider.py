@@ -42,8 +42,8 @@ def get_llm_instance(llm_name: str) -> BaseChatModel:
 
     elif llm_name == "OpenAI (API)":
         if settings.openai_api_key:
-            # TODO: Make model configurable via settings
-            openai_model = "gpt-4o"
+            # Use model name from settings
+            openai_model = settings.openai_model
             logger.info(f"Initializing OpenAI with model: {openai_model}")
             return ChatOpenAI(model=openai_model, api_key=settings.openai_api_key.get_secret_value())
         else:
@@ -52,8 +52,8 @@ def get_llm_instance(llm_name: str) -> BaseChatModel:
 
     elif llm_name == "Gemini (API)":
         if settings.google_api_key:
-            # TODO: Make model configurable via settings
-            gemini_model = "gemini-pro"
+            # Use model name from settings
+            gemini_model = settings.gemini_model
             logger.info(f"Initializing Gemini with model: {gemini_model}")
             return ChatGoogleGenerativeAI(model=gemini_model, google_api_key=settings.google_api_key.get_secret_value())
         else:

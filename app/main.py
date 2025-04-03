@@ -59,7 +59,11 @@ async def perform_initializations():
     logger.info(f"Initialization complete. RAG Success: {rag_success}, Schema Error: {schema_error}")
 
 # --- Gradio Interface Setup ---
-available_llms = ["Ollama (Local)", "OpenAI (API)", "Gemini (API)"]
+# Get available LLMs from settings
+available_llms = [llm.strip() for llm in settings.available_llms_str.split(',') if llm.strip()]
+if not available_llms: # Fallback if setting is empty/invalid
+    available_llms = ["Ollama (Local)", "OpenAI (API)", "Gemini (API)"]
+    logger.warning("AVAILABLE_LLMS setting was empty or invalid, using default list.")
 
 def get_initial_status() -> str:
     """Builds the initial status message based on component initialization."""
@@ -284,7 +288,8 @@ async def update_sql_kb_handler() -> str:
     """
     Handles the button click to update the SQL KB from the saved queries file.
     """
-    saved_sql_path = "/data/successful_queries.sql" # Path inside filesystem container
+    # Use path from settings
+    saved_sql_path = settings.mcp_saved_sql_path
     logger.info(f"Initiating SQL KB update from {saved_sql_path}...")
 
     # 1. Prepare MCP request to read the file
@@ -338,11 +343,24 @@ async def update_sql_kb_handler() -> str:
         return f"Error: {error_msg}"
 
 
-# --- Build Gradio UI ---
+    # --- Build Gradio UI ---
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
     gr.Markdown("# PostgreSQL AI Agent (LangGraph + MCP Mode)")
     # Use a status Textbox that can be updated
     status_display = gr.Textbox(label="Status", value=get_initial_status(), interactive=False)
+
+    # Display Loaded Configuration
+    with gr.Accordion("Loaded Configuration", open=False):
+        # Convert settings to a dict, masking secrets
+        config_display_dict = {}
+        for key, value in settings.model_dump().items():
+            # Check if the value has a 'get_secret_value' method (like SecretStr)
+            if hasattr(value, 'get_secret_value') and callable(value.get_secret_value):
+                 config_display_dict[key] = "****" # Mask secrets
+            else:
+                 config_display_dict[key] = value
+        gr.JSON(value=config_display_dict, label="Current Settings (from .env & defaults)")
+
 
     with gr.Row():
         # Column for Controls
@@ -397,6 +415,20 @@ async def main():
         gr.Markdown("# PostgreSQL AI Agent (LangGraph + MCP Mode)")
         # Use a status Textbox that can be updated
         status_display = gr.Textbox(label="Status", value=get_initial_status(), interactive=False)
+
+        # Display Loaded Configuration
+        # Display Loaded Configuration (Copy from above)
+        with gr.Accordion("Loaded Configuration", open=False):
+            # Convert settings to a dict, masking secrets
+            config_display_dict = {}
+            for key, value in settings.model_dump().items():
+                 # Check if the value has a 'get_secret_value' method (like SecretStr)
+                 if hasattr(value, 'get_secret_value') and callable(value.get_secret_value):
+                      config_display_dict[key] = "****" # Mask secrets
+                 else:
+                      config_display_dict[key] = value
+            gr.JSON(value=config_display_dict, label="Current Settings (from .env & defaults)")
+
 
         with gr.Row():
             # Column for Controls

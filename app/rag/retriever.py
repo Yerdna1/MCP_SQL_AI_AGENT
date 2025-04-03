@@ -23,9 +23,7 @@ gdrive_collection: Optional[chromadb.Collection] = None
 rag_initialized: bool = False
 initialization_error: Optional[str] = None
 
-# Constants - Remove CHROMA_DB_PATH & EMBEDDING_MODEL_NAME, get them from settings inside function
-# CHROMA_DB_PATH = settings.chroma_db_path # Removed
-# EMBEDDING_MODEL_NAME = "text-embedding-ada-002" # Removed
+# Constants - Collection names remain constant
 SQL_COLLECTION_NAME = "sql_examples"
 GDRIVE_COLLECTION_NAME = "gdrive_docs"
 
@@ -57,9 +55,10 @@ def initialize_rag(app_settings: BaseModel) -> Tuple[bool, Optional[str]]:
         logger.info("RAG already initialized.")
         return True, None
 
-    # Get Chroma path from the passed-in settings
+    # Get config values from the passed-in settings object
     chroma_db_path = app_settings.chroma_db_path
-    logger.info(f"Initializing RAG components. Chroma Path: {chroma_db_path}")
+    embedding_model_name = app_settings.embedding_model # Get embedding model name
+    logger.info(f"Initializing RAG components. Chroma Path: {chroma_db_path}, Embedding Model: {embedding_model_name}")
     try:
         # 1. Ensure ChromaDB path exists
         if not os.path.exists(chroma_db_path):
@@ -72,11 +71,9 @@ def initialize_rag(app_settings: BaseModel) -> Tuple[bool, Optional[str]]:
         # 3. Initialize Embeddings (Requires OpenAI API Key)
         # Use the passed-in settings object
         if app_settings.openai_api_key:
-            # Use embedding model name from settings
-            embedding_model_name = app_settings.embedding_model
             # Keep the initialized Langchain embeddings object
             langchain_embeddings = OpenAIEmbeddings(
-                model=embedding_model_name, # Use setting
+                model=embedding_model_name, # Use model name from settings
                 api_key=app_settings.openai_api_key.get_secret_value()
             )
             # Store it globally if needed elsewhere, maybe rename global var?

@@ -42,13 +42,14 @@ def prepare_mcp_log_request(sql: str, error: Optional[str] = None) -> Dict[str, 
         log_content += f"Error: {error}\n"
     log_content += "-" * 20 + "\n\n" # Add separator after each entry
 
-    # No need for marker, using append_file tool directly
-    logger.info(f"Preparing MCP log append request for '/data/output.txt'")
+    # Use path from settings
+    log_file_path = settings.mcp_log_file_path
+    logger.info(f"Preparing MCP log append request for '{log_file_path}'")
     return {
         "server_name": "mcp_filesystem", # Matches service name in docker-compose.yml
         "tool_name": "append_file", # Use the append tool
         "arguments": {
-            "path": "/data/output.txt", # Path inside the filesystem container volume mount
+            "path": log_file_path, # Path inside the filesystem container volume mount
             "content": log_content # Content to append
         }
     }
@@ -63,11 +64,12 @@ def prepare_mcp_read_file_request(file_path: str) -> Dict[str, Any]:
     Returns:
         A dictionary representing the MCP tool call request.
     """
+    # Note: file_path here is relative to the server root defined in settings
     logger.info(f"Preparing MCP request to read file: {file_path}")
     return {
         "server_name": "mcp_filesystem",
         "tool_name": "read_file",
-        "arguments": {"path": file_path}
+        "arguments": {"path": file_path} # Assume file_path is already correct relative path
     }
 
 def prepare_mcp_save_sql_request(sql_query: str) -> Dict[str, Any]:
@@ -84,12 +86,14 @@ def prepare_mcp_save_sql_request(sql_query: str) -> Dict[str, Any]:
     # Add a newline before appending to keep queries separate
     content_to_append = f"{sql_query.strip()};\n"
 
-    logger.info(f"Preparing MCP request to save successful SQL to '/data/successful_queries.sql'")
+    # Use path from settings
+    save_sql_path = settings.mcp_saved_sql_path
+    logger.info(f"Preparing MCP request to save successful SQL to '{save_sql_path}'")
     return {
         "server_name": "mcp_filesystem",
         "tool_name": "append_file",
         "arguments": {
-            "path": "/data/successful_queries.sql", # Dedicated file for successful queries
+            "path": save_sql_path, # Dedicated file for successful queries
             "content": content_to_append
         }
     }
@@ -120,35 +124,41 @@ def prepare_mcp_gdrive_read_request(file_id: str) -> Dict[str, Any]:
 import sys
 import asyncio
 import json # Add json import
+import os # Need os for path join
 from contextlib import AsyncExitStack
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 # Assuming mcp.types is available if needed, but call_tool might not need it directly
+from ..config import settings # Import settings
 
-# Store server parameters globally or retrieve them dynamically
-# IMPORTANT: Adjust the command/args based on your actual server path and connection string
+# --- Dynamically build MCP Server Parameters from settings ---
+
+# Postgres Params
 MCP_POSTGRES_PARAMS = StdioServerParameters(
-    command="node", # Use 'node' directly
+    command=settings.mcp_postgres_command,
     args=[
-        "c:/___WORK/ModelContextProtocolPostgree/mcp_servers/modelcontextprotocol-servers/src/postgres/dist/index.js", # Path to the server script
-        "postgresql://postgres:mysecretpassword@localhost:5432/postgres" # DB Connection string
-        # Add other necessary args for your server script
+        settings.mcp_postgres_script_path,
+        settings.mcp_postgres_conn_string.get_secret_value() # Get value from SecretStr
     ],
     env=None # Or specific env vars if needed
 )
 
-# Add params for filesystem server (assuming standard Docker image)
-# Mount point inside container should match path used in prepare_mcp_log_request
+# Filesystem Params
+# Construct the mount argument dynamically
+mount_source_dir = f"{settings.mcp_filesystem_mount_source_prefix}_{datetime.date.today().strftime('%Y%m%d')}"
+mount_arg = f"type=bind,src={mount_source_dir},dst={settings.mcp_filesystem_mount_target}"
+
 MCP_FILESYSTEM_PARAMS = StdioServerParameters(
-    command="docker", # Assuming docker command is available
+    command=settings.mcp_filesystem_command,
     args=[
         "run", "-i", "--rm",
-        "--mount", f"type=bind,src={datetime.date.today().strftime('%Y%m%d')}_mcp_logs,dst=/data", # Example: Mount a host directory named 'YYYYMMDD_mcp_logs' to /data in container
-        "mcp/filesystem", # The standard filesystem server image
-        "/data" # Root directory inside the container for the server
+        "--mount", mount_arg,
+        settings.mcp_filesystem_image,
+        settings.mcp_filesystem_server_root
     ],
     env=None
 )
+# --- End MCP Server Params ---
 
 
 async def execute_mcp_tool(request: Dict[str, Any]) -> Dict[str, Any]:

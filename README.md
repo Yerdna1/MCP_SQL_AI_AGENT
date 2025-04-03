@@ -109,7 +109,7 @@ graph TD
 *   **ChromaDB:** Vector database for RAG storage.
 *   **OpenAI Embeddings:** Used for generating embeddings for RAG (requires API key).
 *   **Pydantic:** For data validation and settings management (`app/config.py`).
-*   **python-dotenv:** For loading environment variables from `.env`.
+*   **python-dotenv:** For loading environment variables from `.env` (see `.env.example`).
 *   **Pandas:** For displaying query results in the Gradio UI.
 *   **Docker / Docker Compose:** For containerization (requires running MCP servers separately or including them in compose).
 
@@ -134,8 +134,8 @@ graph TD
 
 3.  **Configure Environment:**
     *   Copy `.env.example` to `.env` (if example exists) or create `.env`.
-    *   Fill in necessary API keys (OpenAI, Google, LangSmith) if used.
-    *   **Crucially:** Ensure the MCP server details (command, args, connection strings) in `app/utils/mcp_utils.py` (`MCP_POSTGRES_PARAMS`, etc.) match how your MCP servers are actually run.
+    *   Fill in necessary API keys (OpenAI, Google, LangSmith).
+    *   Review and adjust default model names (`OLLAMA_MODEL`, `OPENAI_MODEL`, `GEMINI_MODEL`, `EMBEDDING_MODEL`), the list of available LLMs (`AVAILABLE_LLMS`), ChromaDB path (`CHROMA_DB_PATH`), MCP server details, and MCP filesystem paths if needed.
 
 4.  **Create Virtual Environment & Install Dependencies:**
     ```bash
@@ -166,5 +166,4 @@ graph TD
 *   **RAG GDrive Population:** Populating the RAG knowledge base from Google Drive documents is not implemented (the `populate_gdrive_kb` function is a placeholder).
 *   **Error Handling:** UI feedback for MCP connection errors, query execution errors, or graph failures could be more specific and user-friendly.
 *   **Security:** Executing LLM-generated SQL carries inherent risks. Robust validation, potentially human-in-the-loop confirmation, and strict database permissions for the MCP server's connection are crucial.
-*   **Configuration:** Some parameters like LLM model names, MCP server details, and RAG paths are hardcoded; moving them entirely to `settings` or `.env` would improve flexibility.
-*   **Docker Compose:** The provided `docker-compose.yml` needs review to ensure it correctly sets up the application *and* the required MCP servers with appropriate volumes and environment variables.
+*   **Docker Compose:** The provided `docker-compose.yml` needs review to ensure it correctly sets up the application *and* the required MCP servers with appropriate volumes and environment variables, passing necessary configurations.

@@ -46,7 +46,29 @@ class Settings(BaseModel):
 
     # Model Names (allow override via environment)
     ollama_model: str = Field("llama3.2:latest", env='OLLAMA_MODEL')
+    openai_model: str = Field("gpt-4o", env='OPENAI_MODEL') # Add default OpenAI model
+    gemini_model: str = Field("gemini-1.5-flash", env='GEMINI_MODEL') # Add default Gemini model
     embedding_model: str = Field("text-embedding-ada-002", env='EMBEDDING_MODEL')
+    # Comma-separated list of LLMs available in the UI dropdown
+    available_llms_str: str = Field("Ollama (Local),OpenAI (API),Gemini (API)", env='AVAILABLE_LLMS')
+
+    # MCP Server Details
+    # Postgres
+    mcp_postgres_command: str = Field("node", env='MCP_POSTGRES_COMMAND')
+    mcp_postgres_script_path: str = Field("c:/___WORK/ModelContextProtocolPostgree/mcp_servers/modelcontextprotocol-servers/src/postgres/dist/index.js", env='MCP_POSTGRES_SCRIPT_PATH')
+    mcp_postgres_conn_string: SecretStr = Field("postgresql://postgres:mysecretpassword@localhost:5432/postgres", env='MCP_POSTGRES_CONN_STRING') # Use SecretStr
+
+    # Filesystem (Docker based)
+    mcp_filesystem_command: str = Field("docker", env='MCP_FILESYSTEM_COMMAND')
+    mcp_filesystem_image: str = Field("mcp/filesystem", env='MCP_FILESYSTEM_IMAGE')
+    mcp_filesystem_mount_source_prefix: str = Field("mcp_logs", env='MCP_FILESYSTEM_MOUNT_SOURCE_PREFIX') # Prefix for host directory name
+    mcp_filesystem_mount_target: str = Field("/data", env='MCP_FILESYSTEM_MOUNT_TARGET') # Target inside container
+    mcp_filesystem_server_root: str = Field("/data", env='MCP_FILESYSTEM_SERVER_ROOT') # Server root inside container
+
+    # Filesystem Paths (relative to MCP_FILESYSTEM_MOUNT_TARGET)
+    mcp_log_file_path: str = Field("output.txt", env='MCP_LOG_FILE_PATH')
+    mcp_saved_sql_path: str = Field("successful_queries.sql", env='MCP_SAVED_SQL_PATH')
+
 
     class Config:
         # Keep env_file for potential fallback or other variables, but load_dotenv should take precedence
