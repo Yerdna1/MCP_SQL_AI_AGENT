@@ -57,8 +57,9 @@ The agent's logic is defined as a state machine using **LangGraph**. The core wo
     *   Displays the chat history, agent thoughts, SQL, and prepared MCP requests.
     *   Calls the `execute_mcp_tool` function (from `app/utils/mcp_utils.py`) to perform real MCP interactions for:
         *   Database queries (`mcp_postgres` server).
-        *   Appending SQL/errors to log file (`mcp_filesystem` server's `append_file` tool).
-        *   Appending successfully executed SQL to `successful_queries.sql` (`mcp_filesystem` server's `append_file` tool).
+        *   Database queries (`mcp_postgres` server) **after user approval**.
+        *   Appending SQL/errors to log file (`mcp_filesystem` server's `append_file` tool) **after successful execution**.
+        *   Appending successfully executed SQL to `successful_queries.sql` (`mcp_filesystem` server's `append_file` tool) **after successful execution**.
     *   Displays query results (or errors) received from the MCP server in a DataFrame.
     *   Adds logging and SQL saving status/errors to the execution status display.
 
@@ -84,10 +85,14 @@ graph TD
         G --> H[sql_validation_node];
         H --> J;
         J --> K{Return final_state};
-        K --> L[Display MCP Requests];
-        K --> M(execute_mcp_tool for Query);
-        M --> N(execute_mcp_tool for Log); # Added Log execution step
-        N --> P[Format Results/Errors];
+        K --> L[Display SQL & Requests];
+        L --> Q{User Approves?};
+        Q -- Yes --> M(execute_mcp_tool for Query);
+        M -- Success --> N(execute_mcp_tool for Log);
+        N --> R(execute_mcp_tool for Save SQL);
+        R --> P[Format Results/Errors];
+        M -- Failure --> P;
+        Q -- No --> P; # User doesn't approve, just format status
         P --> O[Update Gradio UI];
     end
 
@@ -165,5 +170,5 @@ graph TD
 *   **DML/DDL Unsupported:** The agent only supports `SELECT` queries due to intent classification and the assumed read-only nature of the MCP postgres `query` tool.
 *   **RAG GDrive Population:** Populating the RAG knowledge base from Google Drive documents is not implemented (the `populate_gdrive_kb` function is a placeholder).
 *   **Error Handling:** UI feedback for MCP connection errors, query execution errors, or graph failures could be more specific and user-friendly.
-*   **Security:** Executing LLM-generated SQL carries inherent risks. Robust validation, potentially human-in-the-loop confirmation, and strict database permissions for the MCP server's connection are crucial.
+*   **Security:** While a human-in-the-loop step is added, ensure the MCP server's database connection uses appropriately restricted permissions.
 *   **Docker Compose:** The provided `docker-compose.yml` needs review to ensure it correctly sets up the application *and* the required MCP servers with appropriate volumes and environment variables, passing necessary configurations.

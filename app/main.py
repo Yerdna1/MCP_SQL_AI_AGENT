@@ -31,7 +31,7 @@ from .graph.state import AgentState
 from .graph.builder import compiled_graph
 from .rag.retriever import initialize_rag, rag_initialized, initialization_error as rag_init_error
 from .rag.kb_manager import add_sql_examples_to_db
-from .utils.mcp_utils import execute_mcp_tool, fetch_dynamic_schema, prepare_mcp_save_sql_request, prepare_mcp_read_file_request
+from .utils.mcp_utils import execute_mcp_tool, fetch_dynamic_schema, prepare_mcp_save_sql_request, prepare_mcp_read_file_request, prepare_mcp_log_request # Added prepare_mcp_log_request
 
 # --- Global variables for initialized components ---
 rag_success = False
@@ -252,6 +252,8 @@ async def execute_approved_sql_handler(
         if mcp_log_req_state:
             logger.info(f"Attempting to execute MCP log request: {mcp_log_req_state}")
             try:
+                # Prepare log request again, potentially with updated info if needed
+                # For now, assume the state one is fine
                 log_response = await execute_mcp_tool(mcp_log_req_state)
                 logger.info(f"MCP Log Response: {log_response}")
                 if not log_response.get("success"):
