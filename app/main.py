@@ -35,7 +35,7 @@ from .graph.builder import compiled_graph # Import the compiled graph
 from .rag.retriever import initialize_rag, rag_initialized, initialization_error as rag_init_error
 from .rag.kb_manager import populate_gdrive_kb # Keep the placeholder KB manager function
 # from .utils.schema_loader import load_schema_from_file, get_schema # Removed static schema loader imports
-from .utils.mcp_utils import execute_mcp_tool, fetch_dynamic_schema # Remove placeholder import
+from .utils.mcp_utils import execute_mcp_tool, fetch_dynamic_schema, prepare_mcp_save_sql_request # Add import for saving SQL
 
 # Configure logging (already done above)
 # logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -210,6 +210,23 @@ async def run_agent_graph_interface(
                           logger.error(f"Failed to convert MCP result dict to DataFrame: {df_e}")
                           mcp_result_display = pd.DataFrame({'Error': [f"Failed to display dict result: {df_e}"]})
                 # else: # If raw_result is None or empty list, mcp_result_display remains empty DataFrame
+
+                # --- If query was successful, try to save the SQL ---
+                # Check if SQL was generated before attempting to save
+                if agent_sql_output and agent_sql_output != "-- No SQL Generated --":
+                    try:
+                        save_sql_req = prepare_mcp_save_sql_request(agent_sql_output)
+                        logger.info(f"Attempting to save successful SQL: {save_sql_req}")
+                        save_response = await execute_mcp_tool(save_sql_req)
+                        if not save_response.get("success"):
+                            logger.error(f"Failed to save successful SQL: {save_response.get('error')}")
+                            exec_status += f"\n\n**Failed to save SQL:** {save_response.get('error')}"
+                        else:
+                            logger.info("Successfully saved SQL query.")
+                            exec_status += "\n\n**SQL query saved for potential KB use.**"
+                    except Exception as save_e:
+                        logger.error(f"Exception while saving SQL: {save_e}", exc_info=True)
+                        exec_status += f"\n\n**Exception saving SQL:** {save_e}"
 
             else: # MCP call failed
                 error_msg = mcp_response.get('error', 'MCP call failed.')

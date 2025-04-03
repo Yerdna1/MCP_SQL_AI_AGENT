@@ -53,6 +53,31 @@ def prepare_mcp_log_request(sql: str, error: Optional[str] = None) -> Dict[str, 
         }
     }
 
+def prepare_mcp_save_sql_request(sql_query: str) -> Dict[str, Any]:
+    """
+    Prepares the arguments dictionary for an MCP filesystem.append_file request
+    to save a successfully executed SQL query.
+
+    Args:
+        sql_query: The SQL query string to save.
+
+    Returns:
+        A dictionary representing the MCP tool call request.
+    """
+    # Add a newline before appending to keep queries separate
+    content_to_append = f"{sql_query.strip()};\n"
+
+    logger.info(f"Preparing MCP request to save successful SQL to '/data/successful_queries.sql'")
+    return {
+        "server_name": "mcp_filesystem",
+        "tool_name": "append_file",
+        "arguments": {
+            "path": "/data/successful_queries.sql", # Dedicated file for successful queries
+            "content": content_to_append
+        }
+    }
+
+
 # Example of how to prepare a GDrive search request (for KB population)
 def prepare_mcp_gdrive_search_request(search_query: str) -> Dict[str, Any]:
     """Prepares the arguments for an MCP gdrive.search request."""
