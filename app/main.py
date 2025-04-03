@@ -1,45 +1,37 @@
 import gradio as gr
-import gradio as gr
 import logging
 import os
 import json
-from typing import List, Tuple, Dict, Any, Optional # Add Optional
-import asyncio # Add asyncio
-import pandas as pd # Re-add pandas import
+from typing import List, Tuple, Dict, Any, Optional
+import asyncio
+import pandas as pd
+from pydantic import SecretStr # Import SecretStr for masking
 
 # --- Explicitly load and check settings first ---
-import logging # Need logging early
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__) # Initialize logger early
+logger = logging.getLogger(__name__)
 try:
     from .config import settings
-    loaded_key = settings.openai_api_key
-    logger.info(f"EARLY DEBUG in main.py: Loaded openai_api_key type: {type(loaded_key)}")
-    if loaded_key:
-        logger.info(f"EARLY DEBUG in main.py: Loaded openai_api_key value (partial): {loaded_key.get_secret_value()[:5]}...{loaded_key.get_secret_value()[-4:]}")
-    else:
-        logger.info("EARLY DEBUG in main.py: Loaded openai_api_key is None.")
+    # Log a non-secret setting to confirm loading
+    logger.info(f"Settings loaded. Ollama model: {settings.ollama_model}")
 except ImportError as ie:
-     logger.error(f"EARLY DEBUG in main.py: Failed to import settings: {ie}")
+     logger.critical(f"CRITICAL: Failed to import settings: {ie}", exc_info=True)
+     # Exit or raise critical error if settings don't load
+     raise SystemExit(f"Failed to load settings from config: {ie}")
 except Exception as e:
-     logger.error(f"EARLY DEBUG in main.py: Error accessing settings: {e}")
+     logger.critical(f"CRITICAL: Error accessing settings: {e}", exc_info=True)
+     raise SystemExit(f"Error accessing settings: {e}")
 # --- End explicit check ---
 
 
 from langchain_core.messages import HumanMessage, AIMessage
 
 # Import necessary components from modules
-from .config import settings
 from .graph.state import AgentState
-from .graph.builder import compiled_graph # Import the compiled graph
+from .graph.builder import compiled_graph
 from .rag.retriever import initialize_rag, rag_initialized, initialization_error as rag_init_error
-from .rag.kb_manager import populate_gdrive_kb, add_sql_examples_to_db # Add KB population function
-# from .utils.schema_loader import load_schema_from_file, get_schema # Removed static schema loader imports
-from .utils.mcp_utils import execute_mcp_tool, fetch_dynamic_schema, prepare_mcp_save_sql_request, prepare_mcp_read_file_request # Add imports for saving SQL and reading file
-
-# Configure logging (already done above)
-# logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-# logger = logging.getLogger(__name__)
+from .rag.kb_manager import add_sql_examples_to_db
+from .utils.mcp_utils import execute_mcp_tool, fetch_dynamic_schema, prepare_mcp_save_sql_request, prepare_mcp_read_file_request
 
 # --- Global variables for initialized components ---
 rag_success = False
@@ -55,7 +47,7 @@ async def perform_initializations():
     # Pass the imported settings object explicitly
     rag_success, rag_error = initialize_rag(settings)
     # Fetch schema dynamically
-    db_schema, schema_error = await fetch_dynamic_schema() # Call the new async function
+    db_schema, schema_error = await fetch_dynamic_schema()
     logger.info(f"Initialization complete. RAG Success: {rag_success}, Schema Error: {schema_error}")
 
 # --- Gradio Interface Setup ---
@@ -72,9 +64,9 @@ def get_initial_status() -> str:
     if schema_error:
         status_parts.append(f"Schema Error ({schema_error})")
     elif db_schema:
-        status_parts.append(f"Schema Loaded ({list(db_schema.keys())})")
+        status_parts.append(f"Schema Loaded ({len(db_schema)} tables)") # Show count instead of keys
     else:
-        status_parts.append("Schema Not Found") # Should be covered by schema_error
+        status_parts.append("Schema Not Found")
 
     # RAG Status
     if not rag_success:
@@ -84,62 +76,46 @@ def get_initial_status() -> str:
 
     return " | ".join(status_parts)
 
-# --- Gradio Event Handler ---
-# Make the function async again to allow await for MCP call
+# --- Gradio Event Handlers ---
+
 async def run_agent_graph_interface(
     user_query: str,
     selected_llm_name: str,
-    chat_history: List[Tuple[str, str]] # Input is still list of tuples from Gradio state
-) -> Tuple[List[Dict[str, str]], str, str, str, Optional[Any]]: # Restore result to return type
+    chat_history: List[Tuple[str, str]]
+) -> Tuple[List[Dict[str, str]], str, str, str, pd.DataFrame, Dict, Dict, str, gr.Button]:
     """
     Interface function for Gradio to invoke the LangGraph agent.
-    Handles input/output conversion between Gradio and LangGraph state.
+    Prepares SQL for approval but does NOT execute it.
     """
     logger.info(f"Gradio received query: '{user_query}' LLM: {selected_llm_name}")
 
-    # 1. Convert Gradio 'messages' history (List[Dict]) to Langchain messages
+    # 1. Convert Gradio history to Langchain messages
     messages = []
-    # The input 'chat_history' from Gradio (type='messages') is List[Dict[str, str]]
     for msg_data in chat_history:
         role = msg_data.get("role")
         content = msg_data.get("content", "")
-        if role == "user":
-            messages.append(HumanMessage(content=content))
-        elif role == "assistant":
-            messages.append(AIMessage(content=content))
-        else:
-            logger.warning(f"Unknown role in chat history: {role}")
-            # Handle unknown roles if necessary, maybe append as system message?
-            # messages.append(SystemMessage(content=f"Unknown role '{role}': {content}"))
-
-    # Add the *new* user query from the input box
+        if role == "user": messages.append(HumanMessage(content=content))
+        elif role == "assistant": messages.append(AIMessage(content=content))
+        else: logger.warning(f"Unknown role in chat history: {role}")
     messages.append(HumanMessage(content=user_query))
 
-    # 2. Prepare initial state for the graph
-    # Ensure agent_thoughts is initialized as a list
+    # 2. Prepare initial state
     initial_state: AgentState = {
         "messages": messages,
         "selected_llm_name": selected_llm_name,
-        "agent_thoughts": [], # Initialize as empty list
-        "db_schema": db_schema, # Re-add schema to initial state
-        # Other state fields will be populated by the graph nodes
-        "refined_query": None,
-        "relevant_tables": None,
-        "generated_sql": None,
-        "validated_sql": None,
-        "mcp_query_request": None,
-        "mcp_log_request": None,
+        "agent_thoughts": [],
+        "db_schema": db_schema,
+        "schema_error": schema_error, # Pass schema status
+        "refined_query": None, "relevant_tables": None, "generated_sql": None,
+        "validated_sql": None, "mcp_query_request": None, "mcp_log_request": None,
         "error_message": None
     }
 
-    # 3. Invoke the compiled graph
+    # 3. Invoke graph
     try:
-        # Use the pre-compiled graph instance
-        # Remove config argument
         final_state = compiled_graph.invoke(initial_state)
     except Exception as e:
         logger.error(f"Error invoking LangGraph: {e}", exc_info=True)
-        # Handle graph execution error gracefully
         final_state = {
             **initial_state,
             "messages": initial_state["messages"] + [AIMessage(content=f"Agent Error: {e}")],
@@ -147,140 +123,167 @@ async def run_agent_graph_interface(
             "error_message": str(e)
         }
 
-
-    # 4. Extract results from the final state
+    # 4. Extract results
     final_messages = final_state.get("messages", [])
-    # Use validated_sql if available, otherwise generated_sql
     agent_sql_output = final_state.get("validated_sql") or final_state.get("generated_sql") or "-- No SQL Generated --"
     agent_thoughts_log = "\n".join(final_state.get("agent_thoughts", ["No thoughts recorded."]))
     error_message = final_state.get("error_message")
-
-    # 5. Format execution status including MCP requests
     mcp_query_req = final_state.get("mcp_query_request")
     mcp_log_req = final_state.get("mcp_log_request")
+
+    # 5. Format status & prepare for approval
     exec_status = ""
+    execute_button_update = gr.Button(interactive=False, visible=False) # Default hidden
 
     if agent_sql_output != "-- No SQL Generated --":
         exec_status += "SQL generated and validated.\n"
         if mcp_query_req:
-             # Use json.dumps for proper formatting
-             exec_status += f"\n**Execute via MCP Client:**\n```json\n{json.dumps(mcp_query_req, indent=2)}\n```"
+             exec_status += f"\n**Prepared Query Request:**\n```json\n{json.dumps(mcp_query_req, indent=2)}\n```"
+             exec_status += "\n\n**SQL ready for execution. Review and click 'Execute Approved SQL'.**"
+             execute_button_update = gr.Button(interactive=True, visible=True) # Show & enable button
+        else:
+             # Should not happen if SQL is generated, but handle defensively
+             exec_status += "\n\nError: SQL generated but no MCP query request prepared."
         if mcp_log_req:
-             # Warning about overwrite
-             exec_status += f"\n\n**Log via MCP Client (Overwrites!):**\n```json\n{json.dumps(mcp_log_req, indent=2)}\n```"
+             exec_status += f"\n\n**Prepared Log Request (will execute on approval):**\n```json\n{json.dumps(mcp_log_req, indent=2)}\n```"
     elif error_message:
         exec_status = f"SQL generation/validation failed.\nReason: {error_message}"
     else:
-        # Check the last message for potential errors if state doesn't have specific error
-        if final_messages and isinstance(final_messages[-1], AIMessage):
-             ai_content = final_messages[-1].content
-             if ai_content.lower().startswith("error:"):
-                  exec_status = f"SQL Generation Failed.\nReason: {ai_content}"
-             else:
-                  exec_status = "Agent finished without generating SQL."
-        else:
-             exec_status = "Agent finished without generating SQL or reporting an error."
+        # Handle cases where no SQL was generated (e.g., unsupported intent)
+        last_msg_content = final_messages[-1].content if final_messages else "Agent finished."
+        exec_status = f"Agent finished. Reason: {last_msg_content}"
 
-    # --- Execute Real MCP Query ---
-    mcp_result_display = pd.DataFrame() # Default to empty DataFrame
-    if mcp_query_req:
-        logger.info(f"Attempting to execute real MCP query request: {mcp_query_req}")
-        try:
-            # Call the actual MCP execution function from mcp_utils
-            mcp_response = await execute_mcp_tool(mcp_query_req)
-            logger.info(f"Real MCP Response: {mcp_response}") # Log the actual response
-
-            if mcp_response.get("success"):
-                raw_result = mcp_response.get("result")
-                # Attempt to convert to DataFrame ONLY if it's a list of dicts
-                if isinstance(raw_result, list) and raw_result and isinstance(raw_result[0], dict):
-                    try:
-                        mcp_result_display = pd.DataFrame(raw_result)
-                        logger.info("Converted MCP result to DataFrame.")
-                    except Exception as df_e:
-                        logger.error(f"Failed to convert MCP result to DataFrame: {df_e}")
-                        # Display error in a DataFrame format
-                        mcp_result_display = pd.DataFrame({'Error': [f"Failed to display results: {df_e}"]})
-                elif isinstance(raw_result, str):
-                     # If it's just a string message, display that
-                     mcp_result_display = pd.DataFrame({'Message': [raw_result]})
-                     logger.info(f"MCP result is a string message: {raw_result}")
-                elif isinstance(raw_result, dict):
-                     # Handle dictionary results (e.g., single row or status)
-                     try:
-                          mcp_result_display = pd.DataFrame([raw_result]) # Wrap dict in a list
-                          logger.info("Converted single-row MCP result dict to DataFrame.")
-                     except Exception as df_e:
-                          logger.error(f"Failed to convert MCP result dict to DataFrame: {df_e}")
-                          mcp_result_display = pd.DataFrame({'Error': [f"Failed to display dict result: {df_e}"]})
-                # else: # If raw_result is None or empty list, mcp_result_display remains empty DataFrame
-
-                # --- If query was successful, try to save the SQL ---
-                # Check if SQL was generated before attempting to save
-                if agent_sql_output and agent_sql_output != "-- No SQL Generated --":
-                    try:
-                        save_sql_req = prepare_mcp_save_sql_request(agent_sql_output)
-                        logger.info(f"Attempting to save successful SQL: {save_sql_req}")
-                        save_response = await execute_mcp_tool(save_sql_req)
-                        if not save_response.get("success"):
-                            logger.error(f"Failed to save successful SQL: {save_response.get('error')}")
-                            exec_status += f"\n\n**Failed to save SQL:** {save_response.get('error')}"
-                        else:
-                            logger.info("Successfully saved SQL query.")
-                            exec_status += "\n\n**SQL query saved for potential KB use.**"
-                    except Exception as save_e:
-                        logger.error(f"Exception while saving SQL: {save_e}", exc_info=True)
-                        exec_status += f"\n\n**Exception saving SQL:** {save_e}"
-
-            else: # MCP call failed
-                error_msg = mcp_response.get('error', 'MCP call failed.')
-                mcp_result_display = pd.DataFrame({'Error': [error_msg]})
-                logger.error(f"MCP call failed: {error_msg}")
-        except Exception as mcp_e:
-            logger.error(f"Error calling execute_mcp_tool: {mcp_e}", exc_info=True)
-            mcp_result_display = pd.DataFrame({'Error': [f"Failed to execute query via MCP: {mcp_e}"]})
-    else:
-        logger.info("No MCP query request to execute.")
-        # mcp_result_display remains empty DataFrame
-
-    # --- Execute Real MCP Log ---
-    if mcp_log_req:
-        logger.info(f"Attempting to execute real MCP log request: {mcp_log_req}")
-        try:
-            log_response = await execute_mcp_tool(mcp_log_req) # execute_mcp_tool now handles filesystem
-            logger.info(f"Real MCP Log Response: {log_response}")
-            if not log_response.get("success"):
-                 logger.error(f"MCP logging failed: {log_response.get('error', 'Unknown error')}")
-                 # Optionally update status or display error? Maybe add to exec_status?
-                 exec_status += f"\n\n**MCP Logging Failed:** {log_response.get('error', 'Unknown error')}"
-            else:
-                 logger.info("MCP logging successful.")
-                 # Optionally add success message to exec_status?
-                 # exec_status += "\n\n**MCP Logging Successful.**"
-        except Exception as log_e:
-            logger.error(f"Error calling execute_mcp_tool for logging: {log_e}", exc_info=True)
-            # Optionally update status or display error?
-            exec_status += f"\n\n**MCP Logging Exception:** {log_e}"
-
-
-    # 6. Convert Langchain messages back to Gradio 'messages' format
-    # Expected format: List[Dict[str, str]] with keys 'role' ('user' or 'assistant') and 'content'
+    # 6. Convert messages back to Gradio format
     new_chat_history_messages = []
     for msg in final_messages:
         role = "user" if isinstance(msg, HumanMessage) else "assistant"
-        # Handle potential errors or unexpected message types gracefully
         content = getattr(msg, 'content', str(msg))
         new_chat_history_messages.append({"role": role, "content": content})
 
-    # Ensure the list isn't empty if there was an error early on
+    # Ensure list isn't empty if error occurred early
     if not new_chat_history_messages and messages:
-         # Add the original user query and the error message
          new_chat_history_messages.append({"role": "user", "content": user_query})
          new_chat_history_messages.append({"role": "assistant", "content": f"Error: {error_message or 'Unknown agent error'}"})
 
+    # Return updates for UI components AND state components
+    return (
+        new_chat_history_messages,
+        agent_sql_output,
+        agent_thoughts_log,
+        exec_status,
+        pd.DataFrame(), # Clear previous results
+        mcp_query_req or {}, # Store request in state
+        mcp_log_req or {}, # Store log request in state
+        agent_sql_output if mcp_query_req else "", # Store SQL in state only if query req exists
+        execute_button_update # Update execute button visibility/interactivity
+    )
 
-    # Return the display-formatted MCP result and the new message format
-    return new_chat_history_messages, agent_sql_output, agent_thoughts_log, exec_status, mcp_result_display
+# --- Human-in-the-Loop Execution Handler ---
+async def execute_approved_sql_handler(
+    mcp_query_req_state: Dict,
+    mcp_log_req_state: Dict,
+    agent_sql_output_state: str # The actual SQL query string
+) -> Tuple[pd.DataFrame, str, gr.Button]:
+    """
+    Executes the SQL query stored in state after user clicks the approval button.
+    Also handles logging and saving the SQL upon successful execution.
+    """
+    exec_status = ""
+    mcp_result_display = pd.DataFrame()
+    # Hide button immediately after click while processing
+    execute_button_update = gr.Button(interactive=False, visible=False)
+
+    if not mcp_query_req_state:
+        exec_status = "**Error: No query request found in state to execute.**"
+        logger.error("Execute button clicked but no query request in state.")
+        return mcp_result_display, exec_status, execute_button_update
+
+    logger.info(f"Executing approved MCP query request: {mcp_query_req_state}")
+    exec_status = f"Executing approved SQL...\nRequest:\n```json\n{json.dumps(mcp_query_req_state, indent=2)}\n```\n"
+
+    query_success = False # Flag to track if query execution succeeded
+
+    try:
+        # --- Execute Query ---
+        mcp_response = await execute_mcp_tool(mcp_query_req_state)
+        logger.info(f"Approved MCP Query Response: {mcp_response}")
+
+        if mcp_response.get("success"):
+            query_success = True # Mark query as successful
+            exec_status += "\n**Query Execution Successful.**"
+            raw_result = mcp_response.get("result")
+            # Attempt to convert to DataFrame
+            if isinstance(raw_result, list) and raw_result and isinstance(raw_result[0], dict):
+                try:
+                    mcp_result_display = pd.DataFrame(raw_result)
+                    logger.info("Converted MCP result to DataFrame.")
+                except Exception as df_e:
+                    logger.error(f"Failed to convert MCP result to DataFrame: {df_e}")
+                    mcp_result_display = pd.DataFrame({'Error': [f"Failed to display results: {df_e}"]})
+                    exec_status += f"\n**Result Display Error:** Failed to convert results to table: {df_e}"
+            elif isinstance(raw_result, str):
+                 mcp_result_display = pd.DataFrame({'Message': [raw_result]})
+                 logger.info(f"MCP result is a string message: {raw_result}")
+            elif isinstance(raw_result, dict):
+                 try:
+                      mcp_result_display = pd.DataFrame([raw_result])
+                      logger.info("Converted single-row MCP result dict to DataFrame.")
+                 except Exception as df_e:
+                      logger.error(f"Failed to convert MCP result dict to DataFrame: {df_e}")
+                      mcp_result_display = pd.DataFrame({'Error': [f"Failed to display dict result: {df_e}"]})
+                      exec_status += f"\n**Result Display Error:** Failed to convert dict result to table: {df_e}"
+            else:
+                 exec_status += "\nQuery successful, but no displayable content returned."
+
+        else: # MCP query call failed
+            error_msg = mcp_response.get('error', 'MCP query execution failed.')
+            mcp_result_display = pd.DataFrame({'Error': [error_msg]})
+            exec_status += f"\n**Query Execution Failed:** {error_msg}"
+            logger.error(f"Approved MCP query failed: {error_msg}")
+
+    except Exception as mcp_e:
+        logger.error(f"Error calling execute_mcp_tool for approved query: {mcp_e}", exc_info=True)
+        mcp_result_display = pd.DataFrame({'Error': [f"Failed to execute approved query via MCP: {mcp_e}"]})
+        exec_status += f"\n**Query Execution Exception:** {mcp_e}"
+
+    # --- Execute Log and Save SQL only if Query Succeeded ---
+    if query_success:
+        # --- Execute Log ---
+        if mcp_log_req_state:
+            logger.info(f"Attempting to execute MCP log request: {mcp_log_req_state}")
+            try:
+                log_response = await execute_mcp_tool(mcp_log_req_state)
+                logger.info(f"MCP Log Response: {log_response}")
+                if not log_response.get("success"):
+                     logger.error(f"MCP logging failed: {log_response.get('error', 'Unknown error')}")
+                     exec_status += f"\n**MCP Logging Failed:** {log_response.get('error', 'Unknown error')}"
+                else:
+                     logger.info("MCP logging successful.")
+                     exec_status += "\n**MCP Logging Successful.**"
+            except Exception as log_e:
+                logger.error(f"Error calling execute_mcp_tool for logging: {log_e}", exc_info=True)
+                exec_status += f"\n**MCP Logging Exception:** {log_e}"
+
+        # --- Save SQL ---
+        if agent_sql_output_state and agent_sql_output_state != "-- No SQL Generated --":
+             try:
+                 save_sql_req = prepare_mcp_save_sql_request(agent_sql_output_state)
+                 logger.info(f"Attempting to save successful SQL: {save_sql_req}")
+                 save_response = await execute_mcp_tool(save_sql_req)
+                 if not save_response.get("success"):
+                     logger.error(f"Failed to save successful SQL: {save_response.get('error')}")
+                     exec_status += f"\n**Failed to save SQL:** {save_response.get('error')}"
+                 else:
+                     logger.info("Successfully saved SQL query.")
+                     exec_status += "\n**SQL query saved.**"
+             except Exception as save_e:
+                 logger.error(f"Exception while saving SQL: {save_e}", exc_info=True)
+                 exec_status += f"\n**Exception saving SQL:** {save_e}"
+    else:
+        exec_status += "\n\nSkipping logging and saving due to query execution failure."
+
+
+    return mcp_result_display, exec_status, execute_button_update
 
 
 # --- KB Update Handler ---
@@ -308,21 +311,17 @@ async def update_sql_kb_handler() -> str:
         # Content should be in result if successful (check mcp_utils parsing)
         file_content = read_response.get("result")
         if not isinstance(file_content, str):
-             # Handle cases where result might be structured differently or empty
              error_msg = f"Unexpected content type received from MCP read_file: {type(file_content)}. Expected string."
              logger.error(error_msg)
-             # Try to stringify if possible, otherwise report error
              file_content = str(file_content) if file_content is not None else ""
-             if not file_content: # If still empty after stringify
+             if not file_content:
                   return f"Error: {error_msg}"
-             # If we got here, content was non-string but stringifiable, proceed cautiously
 
         if not file_content.strip():
              logger.info(f"{saved_sql_path} is empty or contains only whitespace.")
              return "No new SQL queries found in the saved file to add to KB."
 
-        # 3. Parse SQL queries (assuming they are separated by ';')
-        # Split by semicolon, strip whitespace, filter empty strings
+        # 3. Parse SQL queries
         sql_queries = [q.strip() for q in file_content.split(';') if q.strip()]
         logger.info(f"Parsed {len(sql_queries)} potential SQL queries from file.")
 
@@ -332,9 +331,9 @@ async def update_sql_kb_handler() -> str:
         # 4. Add queries to ChromaDB
         added_count, status_msg = add_sql_examples_to_db(sql_queries)
 
-        return status_msg # Return the status from the add function
+        return status_msg
 
-    except FileNotFoundError: # Specific handling if MCP server reports file not found
+    except FileNotFoundError:
          logger.warning(f"Saved SQL file {saved_sql_path} not found via MCP.")
          return "Saved SQL file not found. No queries added to KB."
     except Exception as e:
@@ -343,24 +342,26 @@ async def update_sql_kb_handler() -> str:
         return f"Error: {error_msg}"
 
 
-    # --- Build Gradio UI ---
+# --- Build Gradio UI ---
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
+    # --- State Components ---
+    mcp_query_req_state = gr.State({})
+    mcp_log_req_state = gr.State({})
+    agent_sql_output_state = gr.State("")
+    # --- End State Components ---
+
     gr.Markdown("# PostgreSQL AI Agent (LangGraph + MCP Mode)")
-    # Use a status Textbox that can be updated
     status_display = gr.Textbox(label="Status", value=get_initial_status(), interactive=False)
 
     # Display Loaded Configuration
     with gr.Accordion("Loaded Configuration", open=False):
-        # Convert settings to a dict, masking secrets
         config_display_dict = {}
         for key, value in settings.model_dump().items():
-            # Check if the value has a 'get_secret_value' method (like SecretStr)
             if hasattr(value, 'get_secret_value') and callable(value.get_secret_value):
-                 config_display_dict[key] = "****" # Mask secrets
+                 config_display_dict[key] = "****"
             else:
                  config_display_dict[key] = value
         gr.JSON(value=config_display_dict, label="Current Settings (from .env & defaults)")
-
 
     with gr.Row():
         # Column for Controls
@@ -368,23 +369,21 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
             llm_selector = gr.Dropdown(label="Select LLM", choices=available_llms, value=available_llms[0])
             query_input = gr.Textbox(label="Your Query", placeholder="e.g., Show me all users from the 'customers' table", lines=4)
             submit_button = gr.Button("Generate SQL", variant="primary")
+            # Add Execute Button (initially hidden)
+            execute_sql_button = gr.Button("Execute Approved SQL", variant="stop", visible=False, interactive=False)
         # Column for Chatbot
         with gr.Column(scale=2):
-            # Update chatbot parameters to address warnings
-            chatbot = gr.Chatbot(label="Conversation", height=500, type="messages") # Use type='messages'
+            chatbot = gr.Chatbot(label="Conversation", height=500, type="messages")
 
     # Accordion for Details below the main interaction
-    with gr.Accordion("Agent Details & Generated SQL", open=False): # Start closed by default
+    with gr.Accordion("Agent Details & Generated SQL", open=False):
          with gr.Row():
-             # Use Markdown for Agent Steps for better formatting potential
              agent_steps_output = gr.Markdown(label="Agent Execution Log")
          with gr.Row():
-             # SQL Output and Execution Status side-by-side
              with gr.Column(scale=2):
                  sql_output = gr.Code(label="Generated/Validated SQL", language="sql", interactive=False)
              with gr.Column(scale=1):
                  execution_status_output = gr.Textbox(label="Execution Status & MCP Requests", lines=10, interactive=False, show_copy_button=True)
-         # Restore row for Query Results display
          with gr.Row():
              query_results_output = gr.DataFrame(label="Query Results", wrap=True)
 
@@ -395,13 +394,26 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
 
     # --- Event Handlers ---
     submit_button.click(
-        fn=run_agent_graph_interface, # Use the interface function
+        fn=run_agent_graph_interface,
         inputs=[query_input, llm_selector, chatbot],
-        # Restore query_results_output to the outputs list
-        outputs=[chatbot, sql_output, agent_steps_output, execution_status_output, query_results_output],
+        # Outputs now include state variables and the execute button
+        outputs=[
+            chatbot, sql_output, agent_steps_output, execution_status_output,
+            query_results_output, # Clear results
+            mcp_query_req_state, mcp_log_req_state, agent_sql_output_state, # Update state
+            execute_sql_button # Update button visibility
+        ],
         api_name="run_agent_graph"
     )
-    # Connect the new button to the new handler
+
+    # Handler for the execute button
+    execute_sql_button.click(
+        fn=execute_approved_sql_handler,
+        inputs=[mcp_query_req_state, mcp_log_req_state, agent_sql_output_state],
+        outputs=[query_results_output, execution_status_output, execute_sql_button], # Update results, status, and hide button
+        api_name="execute_approved_sql"
+    )
+
     update_kb_button.click(fn=update_sql_kb_handler, inputs=[], outputs=[kb_status], api_name="update_sql_kb")
     submit_button.click(lambda: "", inputs=[], outputs=[query_input]) # Clear input
 
@@ -411,80 +423,13 @@ async def main():
     await perform_initializations()
 
     # Build the Gradio UI (must be done after initializations)
-    with gr.Blocks(theme=gr.themes.Soft()) as demo:
-        gr.Markdown("# PostgreSQL AI Agent (LangGraph + MCP Mode)")
-        # Use a status Textbox that can be updated
-        status_display = gr.Textbox(label="Status", value=get_initial_status(), interactive=False)
-
-        # Display Loaded Configuration
-        # Display Loaded Configuration (Copy from above)
-        with gr.Accordion("Loaded Configuration", open=False):
-            # Convert settings to a dict, masking secrets
-            config_display_dict = {}
-            for key, value in settings.model_dump().items():
-                 # Check if the value has a 'get_secret_value' method (like SecretStr)
-                 if hasattr(value, 'get_secret_value') and callable(value.get_secret_value):
-                      config_display_dict[key] = "****" # Mask secrets
-                 else:
-                      config_display_dict[key] = value
-            gr.JSON(value=config_display_dict, label="Current Settings (from .env & defaults)")
-
-
-        with gr.Row():
-            # Column for Controls
-            with gr.Column(scale=1):
-                llm_selector = gr.Dropdown(label="Select LLM", choices=available_llms, value=available_llms[0])
-                query_input = gr.Textbox(label="Your Query", placeholder="e.g., Show me all users from the 'customers' table", lines=4)
-                submit_button = gr.Button("Generate SQL", variant="primary")
-            # Column for Chatbot
-            with gr.Column(scale=2):
-                # Update chatbot parameters to address warnings
-                chatbot = gr.Chatbot(label="Conversation", height=500, type="messages") # Use type='messages'
-
-        # Accordion for Details below the main interaction
-        with gr.Accordion("Agent Details & Generated SQL", open=False): # Start closed by default
-             with gr.Row():
-                 # Use Markdown for Agent Steps for better formatting potential
-                 agent_steps_output = gr.Markdown(label="Agent Execution Log")
-             with gr.Row():
-                 # SQL Output and Execution Status side-by-side
-                 with gr.Column(scale=2):
-                     sql_output = gr.Code(label="Generated/Validated SQL", language="sql", interactive=False)
-                 with gr.Column(scale=1):
-                     execution_status_output = gr.Textbox(label="Execution Status & MCP Requests", lines=10, interactive=False, show_copy_button=True)
-             # Restore row for Query Results display
-             with gr.Row():
-                 query_results_output = gr.DataFrame(label="Query Results", wrap=True)
-
-        # KB Update Controls
-        with gr.Row():
-             update_kb_button = gr.Button("Update SQL KB from Saved Queries")
-             kb_status = gr.Textbox(label="KB Update Status", interactive=False)
-
-        # --- Event Handlers ---
-        submit_button.click(
-            fn=run_agent_graph_interface, # Use the interface function
-            inputs=[query_input, llm_selector, chatbot],
-            # Restore query_results_output to the outputs list
-            outputs=[chatbot, sql_output, agent_steps_output, execution_status_output, query_results_output],
-            api_name="run_agent_graph"
-        )
-        # Connect the new button to the new handler
-        update_kb_button.click(fn=update_sql_kb_handler, inputs=[], outputs=[kb_status], api_name="update_sql_kb")
-        submit_button.click(lambda: "", inputs=[], outputs=[query_input]) # Clear input
-
-    # Launch the Gradio app
+    # UI is now defined above, just launch it here
     logger.info("Starting Gradio application...")
     try:
-        # Try yet another port
         new_port = 7864
         logger.info(f"Attempting to launch Gradio on port {new_port}...")
-        # Need to launch in a way that allows the async event loop to run
-        # demo.launch() is blocking, so run initializations before this point.
-        # The Gradio event handler `run_agent_graph_interface` is already async.
         demo.launch(server_name="0.0.0.0", server_port=new_port, share=False)
     except OSError as e:
-        # Handle specific port-in-use error if needed, or just log general error
         logger.error(f"Gradio launch failed on port {new_port}: {e}", exc_info=True)
     except Exception as launch_e:
          logger.error(f"Gradio launch failed: {launch_e}", exc_info=True)
