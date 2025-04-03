@@ -1,8 +1,7 @@
 import logging
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
-# from langchain_community.llms import Ollama # Deprecated import
-from langchain_ollama import OllamaLLM # New import
+from langchain_ollama import ChatOllama # Import ChatOllama instead of OllamaLLM
 from langchain_core.language_models.chat_models import BaseChatModel
 
 # Assuming settings are imported where this function is called, or passed explicitly
@@ -26,19 +25,16 @@ def get_llm_instance(llm_name: str) -> BaseChatModel:
     """
     logger.info(f"Attempting to get LLM instance for: {llm_name}")
     if llm_name == "Ollama (Local)":
-        # TODO: Make Ollama base_url and model configurable via settings
         try:
             # Use the model name from settings
             ollama_model = settings.ollama_model
-            logger.info(f"Initializing OllamaLLM with model: {ollama_model}")
-            # Add error handling for connection issues if needed
-            # Note: OllamaLLM might behave slightly differently (e.g., as LLM vs ChatModel)
-            # We might need to wrap it or adjust how it's used in the chain if issues arise.
-            # For now, instantiate directly.
-            return OllamaLLM(model=ollama_model)
+            logger.info(f"Initializing ChatOllama with model: {ollama_model}")
+            # Instantiate ChatOllama
+            # Add format="json" if needed for specific models, or rely on with_structured_output
+            return ChatOllama(model=ollama_model, temperature=0) # Keep temperature if desired
         except Exception as e:
-            logger.error(f"Failed to initialize OllamaLLM: {e}", exc_info=True)
-            raise ValueError(f"Failed to initialize Ollama: {e}")
+            logger.error(f"Failed to initialize ChatOllama: {e}", exc_info=True)
+            raise ValueError(f"Failed to initialize Ollama Chat model: {e}")
 
     elif llm_name == "OpenAI (API)":
         if settings.openai_api_key:
