@@ -184,6 +184,7 @@ graph TD
 
 *   **DML/DDL Unsupported:** The agent only supports `SELECT` queries due to intent classification and the assumed read-only nature of the MCP postgres `query` tool.
 *   **RAG GDrive Population:** Populating the RAG knowledge base from Google Drive documents requires manual steps using an MCP client, as detailed in the UI when clicking the "Prepare GDrive KB Population" button. The `populate_gdrive_kb` function only prepares the initial search request.
+*   **NLP Robustness (Ollama):** When using Ollama models, the `nlp_agent_node` relies on parsing JSON from the LLM's string output, which can sometimes be brittle if the model doesn't strictly adhere to the JSON format instructions. Models supporting function calling/structured output (like newer OpenAI/Gemini) are generally more reliable for this step.
 *   **Error Handling:** UI feedback for MCP connection errors, query execution errors, or graph failures could be more specific and user-friendly.
 *   **Security:** The human-in-the-loop step adds a layer of safety, but ensure the MCP server's database connection uses appropriately restricted permissions.
 *   **MCP Server Management:** The application now directly manages MCP server processes via `stdio_client`. Ensure the commands and paths in the settings (`.env`) are correct for your environment. Errors during MCP server startup will appear in the application's logs.

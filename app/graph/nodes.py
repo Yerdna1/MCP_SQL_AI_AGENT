@@ -5,8 +5,7 @@ from typing import List, Dict, Any, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, BaseMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.output_parsers import StrOutputParser
-from pydantic import BaseModel, Field # Import for structured output
+from langchain_core.output_parsers import StrOutputParser # Restore StrOutputParser
 
 # State definition
 from .state import AgentState
@@ -26,13 +25,6 @@ from ..utils.mcp_utils import (
 
 logger = logging.getLogger(__name__)
 
-# --- Pydantic Model for NLP Output ---
-class NlpAnalysisOutput(BaseModel):
-    """Structured output for NLP analysis node."""
-    relevant_tables: List[str] = Field(..., description="List of relevant table names from the schema based on the user query.")
-    refined_query: str = Field(..., description="The user's query, potentially refined for clarity based on the schema and context. If no refinement is needed, return the original query.")
-
-
 # --- Node Functions ---
 
 # Removed fetch_schema_node
@@ -40,7 +32,7 @@ class NlpAnalysisOutput(BaseModel):
 def nlp_agent_node(state: AgentState) -> Dict[str, Any]:
     """
     Node to process the initial user query, refine it, and identify relevant tables.
-    Placeholder implementation - currently just passes the query through.
+    Uses manual JSON parsing for compatibility with models like Ollama.
     """
     thoughts = ["Executing NLP agent node..."]
     current_messages = state["messages"]
@@ -48,6 +40,9 @@ def nlp_agent_node(state: AgentState) -> Dict[str, Any]:
     # Get schema directly from the state
     db_schema = state.get("db_schema")
     schema_error = state.get("schema_error") # Check if schema loading failed earlier
+
+    # Log received schema state
+    logger.info(f"nlp_agent_node: Received db_schema is {'Set' if db_schema is not None else 'None'}, schema_error is {schema_error}")
 
     # Explicitly check for error OR None schema
     if schema_error is not None or db_schema is None:
@@ -58,64 +53,101 @@ def nlp_agent_node(state: AgentState) -> Dict[str, Any]:
             "refined_query": user_query,
             "relevant_tables": None,
             "agent_thoughts": state["agent_thoughts"] + thoughts,
-            "error_message": schema_error
+            "error_message": schema_error # Propagate schema error if it exists
         }
     # --- Schema loaded successfully, continue ---
     thoughts.append(f"Using schema: {list(db_schema.keys())}")
 
-    # --- Implement NLP Logic --- # This replaces the previous placeholder block
+    # --- Implement NLP Logic ---
     refined_query = user_query # Default if refinement fails
     relevant_tables = None # Default
     nlp_error = None
 
     try:
         # 1. Get LLM instance
-        # Use the same LLM selected by the user for consistency, or potentially a different one optimized for this task
         llm = get_llm_instance(state["selected_llm_name"])
         thoughts.append(f"Using LLM for NLP analysis: {state['selected_llm_name']}")
 
-        # 2. Define Prompt (Simpler, relies on with_structured_output)
+        # 2. Define Prompt for Table Extraction and Query Refinement (Explicit JSON instructions)
         nlp_prompt_template = ChatPromptTemplate.from_messages([
-            ("system", """You are an analytical assistant. Analyze the user's query and the provided database schema.
-            Identify the database tables most relevant to the query and refine the query for clarity if needed.
+            ("system", """You are an analytical assistant. Your task is to analyze a user's database query and the database schema to identify relevant tables and refine the query if necessary for clarity.
 
-            Database Schema:
+            **Database Schema:**
             ```json
             {schema}
-            ```"""),
-            ("human", "User Query: {query}")
+            ```
+
+            **User Query:**
+            "{query}"
+
+            **Instructions:**
+            1. Identify the database tables from the schema that are most likely needed to answer the user's query. Consider table names, column names, and the query's intent.
+            2. If the user's query is ambiguous or could be phrased more clearly for SQL generation, provide a slightly refined version. If it's already clear, use the original query.
+            3. Output your response ONLY as a JSON object with the following keys:
+               - "relevant_tables": A list of strings containing the names of the relevant tables. If no specific tables seem relevant (e.g., query is too generic or unrelated), provide an empty list [].
+               - "refined_query": A string containing the refined (or original) user query.
+
+            Example Output: {{"relevant_tables": ["automobily", "ludia"], "refined_query": "Count the number of cars owned by people"}}
+
+            IMPORTANT: Your entire response must be ONLY the JSON object, with no introductory text, explanations, or markdown formatting.
+            """),
         ])
 
-        # 3. Prepare LLM with structured output
-        # This attempts to make the LLM output conform to the NlpAnalysisOutput Pydantic model
-        structured_llm = llm.with_structured_output(NlpAnalysisOutput)
-        nlp_chain = nlp_prompt_template | structured_llm
-        thoughts.append("Invoking LLM for structured NLP analysis...")
+        # 3. Prepare Chain with StrOutputParser
+        nlp_chain = nlp_prompt_template | llm | StrOutputParser()
+        thoughts.append("Invoking LLM for NLP analysis (expecting JSON string)...")
 
         # 4. Invoke Chain
         chain_input = {
             "schema": json.dumps(db_schema, indent=2),
             "query": user_query
         }
-        # The output should be an instance of NlpAnalysisOutput or raise an error
-        parsed_output: NlpAnalysisOutput = nlp_chain.invoke(chain_input)
-        thoughts.append(f"Structured NLP Output: {parsed_output}")
+        llm_output_str = nlp_chain.invoke(chain_input)
+        thoughts.append(f"NLP LLM Raw Output: {llm_output_str}")
 
-        # 5. Extract results directly from the Pydantic model
-        relevant_tables = parsed_output.relevant_tables
-        refined_query = parsed_output.refined_query
-        thoughts.append(f"NLP Analysis Result: Relevant Tables={relevant_tables}, Refined Query='{refined_query}'")
+        # 5. Parse JSON Output (Manual extraction)
+        try:
+            # Find the first '{' and the last '}'
+            start_index = llm_output_str.find('{')
+            end_index = llm_output_str.rfind('}')
+            if start_index != -1 and end_index != -1 and end_index > start_index:
+                json_str = llm_output_str[start_index:end_index+1].strip()
+                thoughts.append(f"Extracted potential JSON: {json_str}")
+                parsed_output = json.loads(json_str)
+            else:
+                raise ValueError("Could not find JSON object delimiters {{ ... }} in LLM output.")
+
+            if isinstance(parsed_output, dict):
+                 extracted_tables = parsed_output.get("relevant_tables")
+                 extracted_query = parsed_output.get("refined_query")
+
+                 # Basic validation
+                 if isinstance(extracted_tables, list) and all(isinstance(t, str) for t in extracted_tables):
+                      relevant_tables = extracted_tables
+                 else:
+                      thoughts.append("Warning: LLM output for 'relevant_tables' was not a list of strings.")
+
+                 if isinstance(extracted_query, str) and extracted_query:
+                      refined_query = extracted_query
+                 else:
+                      thoughts.append("Warning: LLM output for 'refined_query' was not a valid string. Using original.")
+
+                 thoughts.append(f"NLP Analysis Result: Relevant Tables={relevant_tables}, Refined Query='{refined_query}'")
+
+            else:
+                 raise ValueError("LLM output was not a JSON dictionary.")
+
+        except (json.JSONDecodeError, ValueError) as json_e:
+            nlp_error = f"Failed to parse NLP LLM output as JSON: {json_e}. Raw: {llm_output_str}"
+            logger.error(nlp_error)
+            thoughts.append(nlp_error)
+            # Keep defaults: refined_query = user_query, relevant_tables = None
 
     except Exception as e:
         nlp_error = f"Error during NLP analysis: {e}"
         logger.error(nlp_error, exc_info=True)
         thoughts.append(nlp_error)
         # Keep defaults on error
-
-    # Update state, ensuring error message is passed if NLP failed critically
-    # If only parsing failed, we might proceed with defaults but log the issue.
-    # Let's pass nlp_error only if we want to halt execution based on it.
-    # For now, we proceed with defaults if parsing fails.
 
     # Return results (or defaults if NLP failed)
     return {
@@ -172,6 +204,8 @@ def sql_generation_node(state: AgentState) -> Dict[str, Any]: # Node for SELECT
     # 1. Get Schema from state
     db_schema = state.get("db_schema")
     schema_error = state.get("schema_error") # Check if schema loading failed earlier
+    # Log received schema state
+    logger.info(f"sql_generation_node: Received db_schema is {'Set' if db_schema is not None else 'None'}, schema_error is {schema_error}")
     # Explicitly check for error OR None schema
     if schema_error is not None or db_schema is None:
         error_detail = schema_error or 'Schema is None in state.'
