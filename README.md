@@ -68,39 +68,40 @@ The agent's logic is defined as a state machine using **LangGraph**. The core wo
 graph TD
     subgraph Initialization
         direction LR
-        I1[Start App] --> I2{fetch_dynamic_schema via MCP};
-        I1 --> I3{initialize_rag};
+        I1[Start App] --> I2{fetch_dynamic_schema via MCP}
+        I1 --> I3{initialize_rag}
     end
 
     subgraph Gradio Interaction
         direction TB
-        A[User Query via Gradio] --> B(run_agent_graph_interface);
-        B --> C{Invoke LangGraph};
-        C --> D[nlp_agent_node (uses dynamic schema from state)];
-        D --> E[intent_classification_node];
-        E --> F{decide_sql_generation_path};
-        F -- Intent=SELECT --> G[sql_generation_node];
-        F -- Intent=UNSUPPORTED/OTHER --> J[prepare_mcp_requests_node];
-        G --> H[sql_validation_node];
-        H --> J;
-        J --> K{Return final_state};
-        K --> L[Display SQL & Requests];
-        L --> Q{User Clicks 'Execute Approved SQL'};
-        Q -- Click --> M(execute_approved_sql_handler);
-        subgraph execute_approved_sql_handler
-            direction TB
-            M --> M1[execute_mcp_tool for Query];
-            M1 -- Success --> N[execute_mcp_tool for Log];
-            N -- Success --> R[execute_mcp_tool for Save SQL];
-            R --> P[Format Results/Errors];
-            M1 -- Failure --> P;
-            N -- Failure --> R; # Log failure doesn't stop save
-        end
-        P --> O[Update Gradio UI];
+        A[User Query via Gradio] --> B(run_agent_graph_interface)
+        B --> C{Invoke LangGraph}
+        C --> D[nlp_agent_node (uses dynamic schema from state)]
+        D --> E[intent_classification_node]
+        E --> F{decide_sql_generation_path}
+        F -- Intent=SELECT --> G[sql_generation_node]
+        F -- Intent=UNSUPPORTED/OTHER --> J[prepare_mcp_requests_node]
+        G --> H[sql_validation_node]
+        H --> J
+        J --> K{Return final_state}
+        K --> L[Display SQL & Requests]
+        L --> Q{User Clicks 'Execute Approved SQL'}
+        Q -- Click --> M(execute_approved_sql_handler)
     end
-
-    I2 --> B; # Schema needed for agent run
-    I3 --> B; # RAG needed for agent run
+    
+    subgraph execute_approved_sql_handler
+        direction TB
+        M --> M1[execute_mcp_tool for Query]
+        M1 -- Success --> N[execute_mcp_tool for Log]
+        N -- Success --> R[execute_mcp_tool for Save SQL]
+        R --> P[Format Results/Errors]
+        M1 -- Failure --> P
+        N -- Failure --> R %% Log failure doesn't stop save
+    end
+    
+    P --> O[Update Gradio UI]
+    I2 --> B %% Schema needed for agent run
+    I3 --> B %% RAG needed for agent run
 ```
 
 ## Technologies Used
