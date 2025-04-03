@@ -97,7 +97,7 @@ def populate_gdrive_kb():
     # 1. Prepare the initial search request using the default query from settings
     search_query = settings.mcp_gdrive_default_search_query
     if not search_query:
-        status = "Configuration Error: MCP_GDRIVE_DEFAULT_SEARCH_QUERY is not set in the .env file. Please set it to enable GDrive search preparation (e.g., `MCP_GDRIVE_DEFAULT_SEARCH_QUERY=\"mimeType='application/vnd.google-apps.document'\"`)."
+        status = "Configuration Error: MCP_GDRIVE_DEFAULT_SEARCH_QUERY is not set in the .env file. Please set it to enable GDrive search preparation (e.g., `MCP_GDRIVE_DEFAULT_SEARCH_QUERY=\"mimeType='application/vnd.google-apps.document'\"`). Cannot prepare search."
         logger.error(status)
         return status
 
