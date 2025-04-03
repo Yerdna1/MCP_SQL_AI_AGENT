@@ -5,8 +5,7 @@ from typing import List, Dict, Any, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, BaseMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-# StrOutputParser is no longer needed for NLP node
-# from langchain_core.output_parsers import StrOutputParser
+from langchain_core.output_parsers import StrOutputParser
 from pydantic import BaseModel, Field # Import for structured output
 
 # State definition

@@ -48,7 +48,11 @@ async def perform_initializations():
     rag_success, rag_error = initialize_rag(settings)
     # Fetch schema dynamically
     db_schema, schema_error = await fetch_dynamic_schema()
+    # Log results immediately after fetch
     logger.info(f"Initialization complete. RAG Success: {rag_success}, Schema Error: {schema_error}")
+    logger.info(f"Global db_schema after fetch: {'Set' if db_schema is not None else 'None'}")
+    logger.info(f"Global schema_error after fetch: {schema_error}")
+
 
 # --- Gradio Interface Setup ---
 # Get available LLMs from settings
@@ -88,6 +92,8 @@ async def run_agent_graph_interface(
     Prepares SQL for approval but does NOT execute it.
     """
     logger.info(f"Gradio received query: '{user_query}' LLM: {selected_llm_name}")
+    # Log global schema values at start of handler
+    logger.info(f"run_agent_graph_interface: Start - Global db_schema is {'Set' if db_schema is not None else 'None'}, schema_error is {schema_error}")
 
     # 1. Convert Gradio history to Langchain messages
     messages = []
@@ -110,6 +116,9 @@ async def run_agent_graph_interface(
         "validated_sql": None, "mcp_query_request": None, "mcp_log_request": None,
         "error_message": None
     }
+    # Log state right after creation
+    logger.info(f"run_agent_graph_interface: Initial state created - db_schema is {'Set' if initial_state.get('db_schema') is not None else 'None'}, schema_error is {initial_state.get('schema_error')}")
+
 
     # 3. Invoke graph
     try:
