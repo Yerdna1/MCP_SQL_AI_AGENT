@@ -13,12 +13,14 @@ load_dotenv(dotenv_path=dotenv_path, override=True) # Use override=True just in 
 manual_openai_key = os.getenv('OPENAI_API_KEY')
 manual_google_key = os.getenv('GOOGLE_API_KEY')
 manual_langsmith_key = os.getenv('LANGSMITH_API_KEY')
+manual_pg_conn_string = os.getenv('MCP_POSTGRES_CONN_STRING', "postgresql://postgres:mysecretpassword@localhost:5432/postgres") # Add default here
 # ---
 
 # --- Convert manually loaded keys to SecretStr if they exist ---
 secret_openai_key = SecretStr(manual_openai_key) if manual_openai_key else None
 secret_google_key = SecretStr(manual_google_key) if manual_google_key else None
 secret_langsmith_key = SecretStr(manual_langsmith_key) if manual_langsmith_key else None
+secret_pg_conn_string = SecretStr(manual_pg_conn_string) # Always wrap, even default
 # ---
 
 class Settings(BaseModel):
@@ -56,7 +58,7 @@ class Settings(BaseModel):
     # Postgres
     mcp_postgres_command: str = Field("node", env='MCP_POSTGRES_COMMAND')
     mcp_postgres_script_path: str = Field("c:/___WORK/ModelContextProtocolPostgree/mcp_servers/modelcontextprotocol-servers/src/postgres/dist/index.js", env='MCP_POSTGRES_SCRIPT_PATH')
-    mcp_postgres_conn_string: SecretStr = Field("postgresql://postgres:mysecretpassword@localhost:5432/postgres", env='MCP_POSTGRES_CONN_STRING') # Use SecretStr
+    mcp_postgres_conn_string: SecretStr = secret_pg_conn_string # Initialize with pre-wrapped SecretStr
 
     # Filesystem (Docker based)
     mcp_filesystem_command: str = Field("docker", env='MCP_FILESYSTEM_COMMAND')
