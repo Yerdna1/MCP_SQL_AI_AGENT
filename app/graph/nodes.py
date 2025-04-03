@@ -13,7 +13,7 @@ from .state import AgentState
 # Modules for dependencies
 from ..llms.provider import get_llm_instance
 from ..rag.retriever import retrieve_rag_context, rag_initialized, initialization_error as rag_init_error
-from ..utils.schema_loader import get_schema # Restore static schema loader import
+# Removed schema_loader import as schema comes from state now
 from ..utils.mcp_utils import (
     prepare_mcp_sql_query_request,
     prepare_mcp_log_request,
@@ -37,12 +37,13 @@ def nlp_agent_node(state: AgentState) -> Dict[str, Any]:
     thoughts = ["Executing NLP agent node..."]
     current_messages = state["messages"]
     user_query = current_messages[-1].content
-    # Revert to using get_schema() from utils
-    db_schema, schema_error = get_schema()
+    # Get schema directly from the state
+    db_schema = state.get("db_schema")
+    schema_error = state.get("schema_error") # Check if schema loading failed earlier
 
     if schema_error or not db_schema:
-        thoughts.append(f"Skipping NLP analysis due to schema error: {schema_error or 'Schema not loaded.'}")
-        # If schema fails, return immediately with defaults
+        thoughts.append(f"Skipping NLP analysis due to schema error from state: {schema_error or 'Schema not found in state.'}")
+        # If schema failed or not in state, return immediately
         return {
             "refined_query": user_query,
             "relevant_tables": None,
@@ -208,10 +209,11 @@ def sql_generation_node(state: AgentState) -> Dict[str, Any]: # Node for SELECT
     # Use refined query if available, otherwise original user query
     query_to_use = state.get("refined_query") or current_messages[-1].content
 
-    # 1. Check Schema (using static loader via get_schema)
-    db_schema, schema_error = get_schema()
+    # 1. Get Schema from state
+    db_schema = state.get("db_schema")
+    schema_error = state.get("schema_error") # Check if schema loading failed earlier
     if schema_error or not db_schema:
-        error_msg = f"Schema Error: {schema_error or 'Schema not loaded.'}"
+        error_msg = f"Schema Error from state: {schema_error or 'Schema not found in state.'}"
         thoughts.append(error_msg)
         logger.error(error_msg)
         return {"agent_thoughts": state["agent_thoughts"] + thoughts, "error_message": error_msg}

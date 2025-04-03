@@ -26,7 +26,7 @@ The agent's logic is defined as a state machine using **LangGraph**. The core wo
 
 2.  **`nlp_agent_node` (`app/graph/nodes.py`):**
     *   Receives the user query.
-    *   Uses an LLM to analyze the query against the *statically loaded* schema (`get_schema()` reading `schema.json` - **Note Discrepancy**).
+    *   Uses an LLM to analyze the query against the dynamically fetched schema (from agent state).
     *   Attempts to extract relevant table names and refine the query via JSON output parsing.
 
 3.  **`intent_classification_node` (`app/graph/nodes.py`):**
@@ -74,7 +74,7 @@ graph TD
         direction TB
         A[User Query via Gradio] --> B(run_agent_graph_interface);
         B --> C{Invoke LangGraph};
-        C --> D[nlp_agent_node (uses static schema)];
+        C --> D[nlp_agent_node (uses dynamic schema from state)];
         D --> E[intent_classification_node];
         E --> F{decide_sql_generation_path};
         F -- Intent=SELECT --> G[sql_generation_node];
@@ -145,10 +145,7 @@ graph TD
     pip install -r requirements.txt
     ```
 
-5.  **Ensure `schema.json` is Present:**
-    *   While the agent fetches schema dynamically, the `nlp_agent_node` currently still reads this static file. Ensure it reflects your target schema.
-
-6.  **Run the Application:**
+5.  **Run the Application:**
     *   **Ensure MCP Servers are Running:** Start your `mcp_postgres` and `mcp_filesystem` servers (e.g., via Docker Compose, separate terminals, etc.).
     *   **Run the Gradio App:**
         ```bash
@@ -163,7 +160,6 @@ graph TD
 
 ## Limitations & Future Work
 
-*   **Schema Discrepancy:** The application fetches the schema dynamically via MCP at startup (`fetch_dynamic_schema`), but the `nlp_agent_node` currently uses a static schema loaded from `schema.json` via `get_schema()`. This should be unified to consistently use the dynamically fetched schema within the graph state.
 *   **DML/DDL Unsupported:** The agent only supports `SELECT` queries due to intent classification and the assumed read-only nature of the MCP postgres `query` tool.
 *   **Log File Overwrite:** Logging via the MCP filesystem server uses `write_file`, which overwrites `output.txt` on each execution. True appending would require server support or a more complex read-modify-write pattern via MCP.
 *   **RAG Population:** The RAG vector stores (ChromaDB) are initialized but require a mechanism to populate them with relevant SQL examples or documents (e.g., using the placeholder `kb_button` or automatically).
