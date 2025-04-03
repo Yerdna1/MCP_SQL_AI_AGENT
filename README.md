@@ -164,7 +164,6 @@ graph TD
 
 *   **DML/DDL Unsupported:** The agent only supports `SELECT` queries due to intent classification and the assumed read-only nature of the MCP postgres `query` tool.
 *   **RAG GDrive Population:** Populating the RAG knowledge base from Google Drive documents is not implemented (the `populate_gdrive_kb` function is a placeholder).
-*   **NLP Robustness:** The `nlp_agent_node` relies on parsing JSON from LLM string output, which can be brittle. Using LLM functions/tools or more constrained output formats could improve reliability.
 *   **Error Handling:** UI feedback for MCP connection errors, query execution errors, or graph failures could be more specific and user-friendly.
 *   **Security:** Executing LLM-generated SQL carries inherent risks. Robust validation, potentially human-in-the-loop confirmation, and strict database permissions for the MCP server's connection are crucial.
 *   **Configuration:** Some parameters like LLM model names, MCP server details, and RAG paths are hardcoded; moving them entirely to `settings` or `.env` would improve flexibility.
