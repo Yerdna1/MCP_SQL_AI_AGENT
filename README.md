@@ -76,7 +76,7 @@ graph TD
         direction TB
         A[User Query via Gradio] --> B(run_agent_graph_interface)
         B --> C{Invoke LangGraph}
-        C --> D[nlp_agent_node] %% Removed parenthetical text
+        C --> D[nlp_agent_node]
         D --> E[intent_classification_node]
         E --> F{decide_sql_generation_path}
         F -- Intent=SELECT --> G[sql_generation_node]
@@ -86,9 +86,8 @@ graph TD
         J --> K{Return final_state}
         K --> L[Display SQL & Requests]
         L --> Q{User Clicks 'Execute Approved SQL'}
-        Q -- Click --> M(execute_approved_sql_handler) %% Trigger handler
+        Q --> M(execute_approved_sql_handler) %% Trigger handler
         
-        %% Define subgraph for handler actions
         subgraph execute_approved_sql_handler
             direction TB
             M --> M1[execute_mcp_tool for Query]
@@ -96,14 +95,14 @@ graph TD
             N -- Success --> R[execute_mcp_tool for Save SQL]
             R --> P[Format Results/Errors]
             M1 -- Failure --> P
-            N -- Failure --> R %% Log failure doesn't stop save
+            N -- Failure --> R
         end
 
-        P --> O[Update Gradio UI] %% Update UI after handler finishes
+        P --> O[Update Gradio UI]
     end
 
-    I2 --> B %% Schema needed for agent run
-    I3 --> B %% RAG needed for agent run
+    I2 --> B
+    I3 --> B
 ```
 
 ## Technologies Used
