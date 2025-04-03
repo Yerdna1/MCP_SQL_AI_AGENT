@@ -31,3 +31,7 @@ class AgentState(TypedDict):
     agent_thoughts: List[str] # Use a list to append thoughts from each step
     error_message: Optional[str] = None
     query_intent: Optional[str] = None # Add field for query intent (SELECT, INSERT, UPDATE, DELETE, OTHER)
+
+    # Add fields for schema information passed from initialization
+    db_schema: Optional[Dict[str, Any]] = None
+    schema_error: Optional[str] = None
