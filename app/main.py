@@ -33,9 +33,9 @@ from .config import settings
 from .graph.state import AgentState
 from .graph.builder import compiled_graph # Import the compiled graph
 from .rag.retriever import initialize_rag, rag_initialized, initialization_error as rag_init_error
-from .rag.kb_manager import populate_gdrive_kb # Keep the placeholder KB manager function
+from .rag.kb_manager import populate_gdrive_kb, add_sql_examples_to_db # Add KB population function
 # from .utils.schema_loader import load_schema_from_file, get_schema # Removed static schema loader imports
-from .utils.mcp_utils import execute_mcp_tool, fetch_dynamic_schema, prepare_mcp_save_sql_request # Add import for saving SQL
+from .utils.mcp_utils import execute_mcp_tool, fetch_dynamic_schema, prepare_mcp_save_sql_request, prepare_mcp_read_file_request # Add imports for saving SQL and reading file
 
 # Configure logging (already done above)
 # logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -279,6 +279,65 @@ async def run_agent_graph_interface(
     return new_chat_history_messages, agent_sql_output, agent_thoughts_log, exec_status, mcp_result_display
 
 
+# --- KB Update Handler ---
+async def update_sql_kb_handler() -> str:
+    """
+    Handles the button click to update the SQL KB from the saved queries file.
+    """
+    saved_sql_path = "/data/successful_queries.sql" # Path inside filesystem container
+    logger.info(f"Initiating SQL KB update from {saved_sql_path}...")
+
+    # 1. Prepare MCP request to read the file
+    read_request = prepare_mcp_read_file_request(saved_sql_path)
+
+    # 2. Execute MCP request
+    try:
+        read_response = await execute_mcp_tool(read_request)
+        logger.info(f"MCP Read File Response: {read_response}")
+
+        if not read_response.get("success"):
+            error_msg = f"Failed to read {saved_sql_path} via MCP: {read_response.get('error', 'Unknown error')}"
+            logger.error(error_msg)
+            return f"Error: {error_msg}"
+
+        # Content should be in result if successful (check mcp_utils parsing)
+        file_content = read_response.get("result")
+        if not isinstance(file_content, str):
+             # Handle cases where result might be structured differently or empty
+             error_msg = f"Unexpected content type received from MCP read_file: {type(file_content)}. Expected string."
+             logger.error(error_msg)
+             # Try to stringify if possible, otherwise report error
+             file_content = str(file_content) if file_content is not None else ""
+             if not file_content: # If still empty after stringify
+                  return f"Error: {error_msg}"
+             # If we got here, content was non-string but stringifiable, proceed cautiously
+
+        if not file_content.strip():
+             logger.info(f"{saved_sql_path} is empty or contains only whitespace.")
+             return "No new SQL queries found in the saved file to add to KB."
+
+        # 3. Parse SQL queries (assuming they are separated by ';')
+        # Split by semicolon, strip whitespace, filter empty strings
+        sql_queries = [q.strip() for q in file_content.split(';') if q.strip()]
+        logger.info(f"Parsed {len(sql_queries)} potential SQL queries from file.")
+
+        if not sql_queries:
+            return "Parsed file content but found no valid SQL queries to add."
+
+        # 4. Add queries to ChromaDB
+        added_count, status_msg = add_sql_examples_to_db(sql_queries)
+
+        return status_msg # Return the status from the add function
+
+    except FileNotFoundError: # Specific handling if MCP server reports file not found
+         logger.warning(f"Saved SQL file {saved_sql_path} not found via MCP.")
+         return "Saved SQL file not found. No queries added to KB."
+    except Exception as e:
+        error_msg = f"Error during SQL KB update: {e}"
+        logger.error(error_msg, exc_info=True)
+        return f"Error: {error_msg}"
+
+
 # --- Build Gradio UI ---
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
     gr.Markdown("# PostgreSQL AI Agent (LangGraph + MCP Mode)")
@@ -311,10 +370,10 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
          with gr.Row():
              query_results_output = gr.DataFrame(label="Query Results", wrap=True)
 
-    # Keep KB controls at the bottom
+    # KB Update Controls
     with gr.Row():
-         kb_button = gr.Button("Populate KB from GDrive (Placeholder)")
-         kb_status = gr.Textbox(label="KB Status", interactive=False)
+         update_kb_button = gr.Button("Update SQL KB from Saved Queries")
+         kb_status = gr.Textbox(label="KB Update Status", interactive=False)
 
     # --- Event Handlers ---
     submit_button.click(
@@ -324,7 +383,8 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         outputs=[chatbot, sql_output, agent_steps_output, execution_status_output, query_results_output],
         api_name="run_agent_graph"
     )
-    kb_button.click(fn=populate_gdrive_kb, inputs=[], outputs=[kb_status], api_name="populate_gdrive_kb")
+    # Connect the new button to the new handler
+    update_kb_button.click(fn=update_sql_kb_handler, inputs=[], outputs=[kb_status], api_name="update_sql_kb")
     submit_button.click(lambda: "", inputs=[], outputs=[query_input]) # Clear input
 
 # --- Launch App ---
@@ -364,10 +424,10 @@ async def main():
              with gr.Row():
                  query_results_output = gr.DataFrame(label="Query Results", wrap=True)
 
-        # Keep KB controls at the bottom
+        # KB Update Controls
         with gr.Row():
-             kb_button = gr.Button("Populate KB from GDrive (Placeholder)")
-             kb_status = gr.Textbox(label="KB Status", interactive=False)
+             update_kb_button = gr.Button("Update SQL KB from Saved Queries")
+             kb_status = gr.Textbox(label="KB Update Status", interactive=False)
 
         # --- Event Handlers ---
         submit_button.click(
@@ -377,7 +437,8 @@ async def main():
             outputs=[chatbot, sql_output, agent_steps_output, execution_status_output, query_results_output],
             api_name="run_agent_graph"
         )
-        kb_button.click(fn=populate_gdrive_kb, inputs=[], outputs=[kb_status], api_name="populate_gdrive_kb")
+        # Connect the new button to the new handler
+        update_kb_button.click(fn=update_sql_kb_handler, inputs=[], outputs=[kb_status], api_name="update_sql_kb")
         submit_button.click(lambda: "", inputs=[], outputs=[query_input]) # Clear input
 
     # Launch the Gradio app

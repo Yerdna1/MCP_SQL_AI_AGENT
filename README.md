@@ -11,9 +11,9 @@ This project implements an AI agent capable of interacting with a PostgreSQL dat
 *   **SQL Validation:** Uses an LLM to perform basic validation and potential correction of the generated SQL.
 *   **MCP Database Interaction:** Connects to a PostgreSQL database via a dedicated MCP server (`mcp_postgres`) to execute the generated `SELECT` queries using the `mcp` Python library.
 *   **MCP Logging:** Appends generated SQL and errors to a log file (`/data/output.txt` within the filesystem container) via the `append_file` tool of an MCP filesystem server.
-*   **Automatic SQL Saving:** Successfully executed SQL queries are automatically appended to `/data/successful_queries.sql` via MCP, creating a potential source for future RAG knowledge base population.
-*   **Gradio Web Interface:** Provides a user-friendly chat interface for interaction, displaying the conversation, agent steps (thoughts), generated SQL, prepared MCP requests, and query results.
-*   **RAG (Retrieval-Augmented Generation):** Includes components for RAG using ChromaDB and OpenAI embeddings, initialized at startup. Requires a separate process to populate the KB, potentially using the saved successful queries.
+*   **Automatic SQL Saving:** Successfully executed SQL queries are automatically appended to `/data/successful_queries.sql` via MCP, creating a source for RAG knowledge base population.
+*   **Gradio Web Interface:** Provides a user-friendly chat interface for interaction, displaying the conversation, agent steps (thoughts), generated SQL, prepared MCP requests, and query results. Includes a button to update the RAG SQL knowledge base.
+*   **RAG (Retrieval-Augmented Generation):** Includes components for RAG using ChromaDB and OpenAI embeddings, initialized at startup. The SQL examples knowledge base can be populated from the saved `successful_queries.sql` file using the "Update SQL KB" button in the UI (requires MCP filesystem server access).
 *   **LangSmith Tracing (Optional):** Can be configured via environment variables to trace agent execution using LangSmith.
 *   **Docker Support:** Includes `Dockerfile` and `docker-compose.yml` for containerized deployment (details need verification).
 
@@ -163,7 +163,7 @@ graph TD
 ## Limitations & Future Work
 
 *   **DML/DDL Unsupported:** The agent only supports `SELECT` queries due to intent classification and the assumed read-only nature of the MCP postgres `query` tool.
-*   **RAG Population:** The RAG vector stores (ChromaDB) are initialized, and successful SQL queries are saved to a file. However, a separate mechanism/script is needed to actually process `successful_queries.sql` (or other sources) and populate the ChromaDB knowledge base for retrieval. The placeholder Gradio button for GDrive population is also not implemented.
+*   **RAG GDrive Population:** Populating the RAG knowledge base from Google Drive documents is not implemented (the `populate_gdrive_kb` function is a placeholder).
 *   **NLP Robustness:** The `nlp_agent_node` relies on parsing JSON from LLM string output, which can be brittle. Using LLM functions/tools or more constrained output formats could improve reliability.
 *   **Error Handling:** UI feedback for MCP connection errors, query execution errors, or graph failures could be more specific and user-friendly.
 *   **Security:** Executing LLM-generated SQL carries inherent risks. Robust validation, potentially human-in-the-loop confirmation, and strict database permissions for the MCP server's connection are crucial.

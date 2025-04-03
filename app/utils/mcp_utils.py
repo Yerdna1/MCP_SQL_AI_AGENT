@@ -53,6 +53,23 @@ def prepare_mcp_log_request(sql: str, error: Optional[str] = None) -> Dict[str, 
         }
     }
 
+def prepare_mcp_read_file_request(file_path: str) -> Dict[str, Any]:
+    """
+    Prepares the arguments dictionary for an MCP filesystem.read_file request.
+
+    Args:
+        file_path: The path of the file to read inside the MCP filesystem server's context.
+
+    Returns:
+        A dictionary representing the MCP tool call request.
+    """
+    logger.info(f"Preparing MCP request to read file: {file_path}")
+    return {
+        "server_name": "mcp_filesystem",
+        "tool_name": "read_file",
+        "arguments": {"path": file_path}
+    }
+
 def prepare_mcp_save_sql_request(sql_query: str) -> Dict[str, Any]:
     """
     Prepares the arguments dictionary for an MCP filesystem.append_file request
