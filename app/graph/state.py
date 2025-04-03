@@ -20,6 +20,10 @@ class AgentState(TypedDict):
     """
     messages: Annotated[List[BaseMessage], add_messages]
     selected_llm_name: str
+    
+    agent_thoughts: List[str]  # This should be required too
+    db_schema: Optional[Dict[str, Any]]  # Remove the "= None" default
+    schema_error: Optional[str]  # Remove the "= None" default
 
     # Fields populated by different nodes
     refined_query: Optional[str] = None
