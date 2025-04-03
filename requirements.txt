@@ -1,0 +1,42 @@
+# Core Frameworks & Orchestration
+langchain
+langchain-core[output_parsers] # Add for JsonOutputParser
+langgraph
+langchain-community
+langsmith
+
+# LLM Integrations
+langchain-openai
+langchain-google-genai
+# ollama # Deprecated, replaced by langchain-ollama
+langchain-ollama
+
+# UI
+gradio
+
+# Data Handling & Validation
+pydantic
+pandas # Re-add pandas for DataFrame display
+# pydantic-ai # Let's hold off on this until we see a clear need for structured LLM output parsing in this specific way
+
+# MCP Client Library
+mcp
+
+# Vector Store & Embeddings
+chromadb
+# langchain-openai # Already included above for LLM, also provides embeddings
+
+# Utilities
+python-dotenv
+requests
+
+# Tool/API Integration (Potential)
+# composio-langchain # Let's evaluate if this is the best fit for MCP/tool use later
+
+# Email (Gmail)
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+
+# Docker (Optional, for interacting with Docker API from Python if needed)
+# docker

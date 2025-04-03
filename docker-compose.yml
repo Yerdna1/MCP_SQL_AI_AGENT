@@ -1,0 +1,100 @@
+services:
+  app:
+    build: . # Build the image from the Dockerfile in the current directory
+    container_name: sql_agent_app
+    ports:
+      - "7860:7860" # Map host port 7860 to container port 7860 (Gradio)
+    volumes:
+      - ./app:/app/app # Mount the local 'app' directory into the container for development
+      - ./output.txt:/app/output.txt # Mount the output file
+      - ./schema.json:/app/schema.json # Mount the schema file (read-only ideally, but simple mount for now)
+      # We might need to mount credential files later for Gmail API
+      # - ./credentials.json:/app/credentials.json
+      # - ./token.json:/app/token.json
+    env_file:
+      - .env # Load environment variables from .env file
+    environment:
+      # Ensure Python outputs directly to console without buffering
+      PYTHONUNBUFFERED: 1
+      # LangSmith/Langchain Tracing (if keys are set in .env)
+      LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
+      LANGCHAIN_ENDPOINT: ${LANGCHAIN_ENDPOINT}
+      LANGCHAIN_API_KEY: ${LANGSMITH_API_KEY}
+      LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT}
+      # API Keys (will be read from .env)
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      # Gmail credentials file path (if needed)
+      # GMAIL_CREDENTIALS_FILE: /app/credentials.json
+      # GMAIL_TOKEN_FILE: /app/token.json
+      # ChromaDB Persistence Path
+      CHROMA_DB_PATH: /app/chroma_db
+    # Removed depends_on: db
+    networks:
+      - sql_agent_network
+
+  mcp_postgres:
+    image: mcp/postgres
+    container_name: mcp_postgres_server
+    restart: unless-stopped
+    networks:
+      - sql_agent_network
+    # Pass the connection URL via command. Get value from .env
+    # Example: postgresql://user:pass@host.docker.internal:5432/dbname
+    command: ["${POSTGRES_CONNECTION_URL}"]
+    # depends_on: # Optional: wait for DB if it's also in compose
+    #   - db # Uncomment this line ONLY if you define a 'db' service below
+
+  mcp_filesystem:
+    image: mcp/filesystem
+    container_name: mcp_filesystem_server
+    restart: unless-stopped
+    volumes:
+      # Mount the host file into /data inside the container
+      - ./output.txt:/data/output.txt
+    networks:
+      - sql_agent_network
+    # Allow the server to access the /data directory
+    command: ["/projects", "--allow", "/data"]
+
+  mcp_gdrive:
+    image: mcp/gdrive
+    container_name: mcp_gdrive_server
+    restart: unless-stopped
+    volumes:
+      # Persistent volume for storing GDrive auth credentials after user auth flow
+      - mcp-gdrive:/gdrive-server
+      # Mount the OAuth keys file (user needs to provide this)
+      # - ./gcp-oauth.keys.json:/gcp-oauth.keys.json # Uncomment and adjust path if needed for auth command
+    networks:
+      - sql_agent_network
+    environment:
+      # Tell the server where to find credentials within the volume
+      GDRIVE_CREDENTIALS_PATH: /gdrive-server/credentials.json
+      # If running the auth command via docker exec, might need this:
+      # GDRIVE_OAUTH_PATH: /gcp-oauth.keys.json
+
+# Optional: Define a PostgreSQL database service if you want it containerized
+#  db:
+#    image: postgres:15
+#    container_name: postgres_db
+#    restart: unless-stopped
+#    environment:
+#      POSTGRES_DB: your_db_name
+#      POSTGRES_USER: your_user
+#      POSTGRES_PASSWORD: your_password
+#    volumes:
+#      - postgres_data:/var/lib/postgresql/data
+#    networks:
+#      - sql_agent_network
+#    ports: # Optional: expose port to host if needed for external tools
+#      - "5432:5432"
+
+volumes:
+  chroma_data: # For RAG vector store persistence
+  mcp-gdrive: # For GDrive auth credential persistence
+#  postgres_data: # Add this if using the 'db' service above
+
+networks:
+  sql_agent_network:
+    driver: bridge
