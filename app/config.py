@@ -49,7 +49,7 @@ class Settings(BaseModel):
     # Model Names (allow override via environment)
     ollama_model: str = Field("llama3.2:latest", env='OLLAMA_MODEL')
     openai_model: str = Field("gpt-4o", env='OPENAI_MODEL') # Add default OpenAI model
-    gemini_model: str = Field("gemini-1.5-flash", env='GEMINI_MODEL') # Add default Gemini model
+    gemini_model: str = Field("gemini-2.5-pro-exp-03-25", env='GEMINI_MODEL') # Add default Gemini model
     embedding_model: str = Field("text-embedding-ada-002", env='EMBEDDING_MODEL')
     # Comma-separated list of LLMs available in the UI dropdown
     available_llms_str: str = Field("Ollama (Local),OpenAI (API),Gemini (API)", env='AVAILABLE_LLMS')
