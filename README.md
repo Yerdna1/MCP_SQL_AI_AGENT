@@ -87,12 +87,15 @@ graph TD
         K --> L[Display SQL & Requests];
         L --> Q{User Clicks 'Execute Approved SQL'};
         Q -- Click --> M(execute_approved_sql_handler);
-        M --> M1(execute_mcp_tool for Query);
-        M1 -- Success --> N(execute_mcp_tool for Log);
-        N -- Success --> R(execute_mcp_tool for Save SQL);
-        R --> P[Format Results/Errors];
-        M1 -- Failure --> P;
-        N -- Failure --> R; # Log failure doesn't stop save
+        subgraph execute_approved_sql_handler
+            direction TB
+            M --> M1[execute_mcp_tool for Query];
+            M1 -- Success --> N[execute_mcp_tool for Log];
+            N -- Success --> R[execute_mcp_tool for Save SQL];
+            R --> P[Format Results/Errors];
+            M1 -- Failure --> P;
+            N -- Failure --> R; # Log failure doesn't stop save
+        end
         P --> O[Update Gradio UI];
     end
 

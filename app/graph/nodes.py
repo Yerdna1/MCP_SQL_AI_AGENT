@@ -50,9 +50,11 @@ def nlp_agent_node(state: AgentState) -> Dict[str, Any]:
     db_schema = state.get("db_schema")
     schema_error = state.get("schema_error") # Check if schema loading failed earlier
 
-    if schema_error or not db_schema:
-        thoughts.append(f"Skipping NLP analysis due to schema error from state: {schema_error or 'Schema not found in state.'}")
-        # If schema failed or not in state, return immediately
+    # Explicitly check for error OR None schema
+    if schema_error is not None or db_schema is None:
+        error_detail = schema_error or 'Schema is None in state.'
+        thoughts.append(f"Skipping NLP analysis due to schema issue from state: {error_detail}")
+        # If schema failed or is None, return immediately
         return {
             "refined_query": user_query,
             "relevant_tables": None,
@@ -171,8 +173,10 @@ def sql_generation_node(state: AgentState) -> Dict[str, Any]: # Node for SELECT
     # 1. Get Schema from state
     db_schema = state.get("db_schema")
     schema_error = state.get("schema_error") # Check if schema loading failed earlier
-    if schema_error or not db_schema:
-        error_msg = f"Schema Error from state: {schema_error or 'Schema not found in state.'}"
+    # Explicitly check for error OR None schema
+    if schema_error is not None or db_schema is None:
+        error_detail = schema_error or 'Schema is None in state.'
+        error_msg = f"Schema Error from state: {error_detail}"
         thoughts.append(error_msg)
         logger.error(error_msg)
         return {"agent_thoughts": state["agent_thoughts"] + thoughts, "error_message": error_msg}

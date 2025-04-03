@@ -308,7 +308,8 @@ async def update_sql_kb_handler() -> str:
         if not read_response.get("success"):
             error_msg = read_response.get('error', 'Unknown MCP error')
             # Check if the error indicates file not found (adjust pattern as needed based on server)
-            if "not found" in error_msg.lower() or "no such file" in error_msg.lower():
+            # More robust check for file not found errors
+            if isinstance(error_msg, str) and ("not found" in error_msg.lower() or "no such file" in error_msg.lower()):
                  logger.warning(f"Saved SQL file {saved_sql_path} not found via MCP.")
                  return "Saved SQL file not found. No queries added to KB yet."
             else:
