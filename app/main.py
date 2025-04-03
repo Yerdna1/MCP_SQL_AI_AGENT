@@ -222,15 +222,24 @@ async def run_agent_graph_interface(
         logger.info("No MCP query request to execute.")
         # mcp_result_display remains empty DataFrame
 
-    # --- Execute Real MCP Log (Optional - Add later if needed) ---
-    # if mcp_log_req:
-    #     logger.info(f"Attempting to execute real MCP log request: {mcp_log_req}")
-    #     try:
-    #         log_response = await execute_mcp_tool(mcp_log_req) # Requires execute_mcp_tool to handle filesystem server
-    #         logger.info(f"Real MCP Log Response: {log_response}")
-    #     except Exception as log_e:
-    #         logger.error(f"Error calling execute_mcp_tool for logging: {log_e}", exc_info=True)
-    #         # Optionally update status or display error?
+    # --- Execute Real MCP Log ---
+    if mcp_log_req:
+        logger.info(f"Attempting to execute real MCP log request: {mcp_log_req}")
+        try:
+            log_response = await execute_mcp_tool(mcp_log_req) # execute_mcp_tool now handles filesystem
+            logger.info(f"Real MCP Log Response: {log_response}")
+            if not log_response.get("success"):
+                 logger.error(f"MCP logging failed: {log_response.get('error', 'Unknown error')}")
+                 # Optionally update status or display error? Maybe add to exec_status?
+                 exec_status += f"\n\n**MCP Logging Failed:** {log_response.get('error', 'Unknown error')}"
+            else:
+                 logger.info("MCP logging successful.")
+                 # Optionally add success message to exec_status?
+                 # exec_status += "\n\n**MCP Logging Successful.**"
+        except Exception as log_e:
+            logger.error(f"Error calling execute_mcp_tool for logging: {log_e}", exc_info=True)
+            # Optionally update status or display error?
+            exec_status += f"\n\n**MCP Logging Exception:** {log_e}"
 
 
     # 6. Convert Langchain messages back to Gradio 'messages' format

@@ -101,8 +101,19 @@ MCP_POSTGRES_PARAMS = StdioServerParameters(
     env=None # Or specific env vars if needed
 )
 
-# Add params for other servers if needed
-# MCP_FILESYSTEM_PARAMS = StdioServerParameters(...)
+# Add params for filesystem server (assuming standard Docker image)
+# Mount point inside container should match path used in prepare_mcp_log_request
+MCP_FILESYSTEM_PARAMS = StdioServerParameters(
+    command="docker", # Assuming docker command is available
+    args=[
+        "run", "-i", "--rm",
+        "--mount", f"type=bind,src={datetime.date.today().strftime('%Y%m%d')}_mcp_logs,dst=/data", # Example: Mount a host directory named 'YYYYMMDD_mcp_logs' to /data in container
+        "mcp/filesystem", # The standard filesystem server image
+        "/data" # Root directory inside the container for the server
+    ],
+    env=None
+)
+
 
 async def execute_mcp_tool(request: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -117,8 +128,8 @@ async def execute_mcp_tool(request: Dict[str, Any]) -> Dict[str, Any]:
     # Select the correct server parameters
     if server_name == "mcp_postgres": # Match the name used in prepare_mcp_sql_query_request
          server_params = MCP_POSTGRES_PARAMS
-    # elif server_name == "mcp_filesystem":
-    #      server_params = MCP_FILESYSTEM_PARAMS
+    elif server_name == "mcp_filesystem": # Match the name used in prepare_mcp_log_request
+         server_params = MCP_FILESYSTEM_PARAMS
     else:
          error_msg = f"Unknown MCP server name specified in request: {server_name}"
          logger.error(error_msg)
