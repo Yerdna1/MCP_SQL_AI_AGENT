@@ -54,8 +54,8 @@ The agent's logic is defined as a state machine using **LangGraph**. The core wo
 
 8.  **Gradio UI & MCP Execution (`app/main.py`):**
     *   Displays the chat history, agent thoughts, SQL, and prepared MCP requests.
-    *   **Currently uses `call_mcp_tool_placeholder`** to simulate MCP execution for query results and logging.
-    *   Displays simulated query results in a DataFrame.
+    *   Calls the `execute_mcp_tool` function (from `app/utils/mcp_utils.py`) to perform real MCP interactions for database queries. (Note: Logging via MCP is prepared but not executed by default).
+    *   Displays query results (or errors) received from the MCP server in a DataFrame.
 
 ### Workflow Diagram (Mermaid)
 
@@ -80,8 +80,8 @@ graph TD
         H --> J;
         J --> K{Return final_state};
         K --> L[Display MCP Requests];
-        K --> M[call_mcp_tool_placeholder];
-        M --> N[Format Simulated Results];
+        K --> M[execute_mcp_tool for Query];
+        M --> N[Format Results/Errors];
         N --> O[Update Gradio UI];
     end
 
@@ -159,7 +159,7 @@ graph TD
 
 ## Limitations & Future Work
 
-*   **Placeholder MCP Execution:** The Gradio UI (`app/main.py`) currently uses `call_mcp_tool_placeholder` to *simulate* executing database queries and logging. The actual `execute_mcp_tool` function needs to be integrated into the Gradio callback (`run_agent_graph_interface`) to perform real MCP interactions.
+*   **MCP Logging Not Executed:** While the agent prepares a request to log SQL/errors via an MCP filesystem server (`prepare_mcp_log_request`), the `app/main.py` UI logic does not currently execute this request. It only executes the database query request.
 *   **Schema Discrepancy:** The application fetches the schema dynamically via MCP at startup (`fetch_dynamic_schema`), but the `nlp_agent_node` currently uses a static schema loaded from `schema.json` via `get_schema()`. This should be unified to consistently use the dynamically fetched schema within the graph state.
 *   **DML/DDL Unsupported:** The agent only supports `SELECT` queries due to intent classification and the assumed read-only nature of the MCP postgres `query` tool.
 *   **Log File Overwrite:** Logging via the MCP filesystem server uses `write_file`, which overwrites `output.txt` on each execution. True appending would require server support or a more complex read-modify-write pattern via MCP.

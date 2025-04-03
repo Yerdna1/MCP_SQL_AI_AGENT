@@ -287,35 +287,3 @@ async def fetch_dynamic_schema() -> Tuple[Optional[Dict[str, Any]], Optional[str
         error_msg = f"Error processing fetched schema data: {e}"
         logger.error(error_msg, exc_info=True)
         return None, error_msg
-
-# --- Placeholder for MCP Tool Execution (Restored) ---
-# IMPORTANT: Replace this with actual MCP client call mechanism if automatic execution is desired
-async def call_mcp_tool_placeholder(request: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Placeholder function to simulate calling an MCP tool.
-    Replace this with the actual implementation using the MCP client library.
-    """
-    server = request.get("server_name")
-    tool = request.get("tool_name")
-    args = request.get("arguments", {})
-    sql = args.get("sql", "")
-
-    logger.warning(f"Placeholder MCP Call: Server='{server}', Tool='{tool}', Args='{args}'")
-
-    # Simulate different responses based on tool/server for testing
-    if server == "mcp_postgres" and tool == "query":
-        # Simulate a successful query result (e.g., list of dictionaries)
-        if "count" in sql.lower():
-            return {"success": True, "result": [{"count": 123}]} # Example count result
-        elif "select" in sql.lower() or "show" in sql.lower():
-             # Example multi-row result
-             return {"success": True, "result": [{"col_a": "value1", "col_b": "value2"}, {"col_a": "value3", "col_b": "value4"}]}
-        else:
-             # Simulate non-select query success (though should be blocked by agent logic)
-             return {"success": True, "result": "Query executed successfully (simulated)."}
-    elif server == "mcp_filesystem" and tool == "write_file":
-        return {"success": True, "result": f"File '{args.get('path')}' written (simulated)."}
-    else:
-        # Simulate a generic error
-        logger.error("Placeholder MCP Call: Unknown server/tool combination.")
-        return {"success": False, "error": f"Unknown tool '{tool}' for server '{server}' (simulated)."}

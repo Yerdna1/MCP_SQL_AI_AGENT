@@ -35,7 +35,7 @@ from .graph.builder import compiled_graph # Import the compiled graph
 from .rag.retriever import initialize_rag, rag_initialized, initialization_error as rag_init_error
 from .rag.kb_manager import populate_gdrive_kb # Keep the placeholder KB manager function
 # from .utils.schema_loader import load_schema_from_file, get_schema # Removed static schema loader imports
-from .utils.mcp_utils import execute_mcp_tool, fetch_dynamic_schema, call_mcp_tool_placeholder # Restore placeholder import for now
+from .utils.mcp_utils import execute_mcp_tool, fetch_dynamic_schema # Remove placeholder import
 
 # Configure logging (already done above)
 # logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -177,14 +177,15 @@ async def run_agent_graph_interface(
         else:
              exec_status = "Agent finished without generating SQL or reporting an error."
 
-    # --- Restore Placeholder MCP Execution ---
+    # --- Execute Real MCP Query ---
     mcp_result_display = pd.DataFrame() # Default to empty DataFrame
     if mcp_query_req:
-        logger.info(f"Attempting to execute MCP query request (placeholder): {mcp_query_req}")
+        logger.info(f"Attempting to execute real MCP query request: {mcp_query_req}")
         try:
-            # Use the placeholder function again until real client is implemented
-            mcp_response = await call_mcp_tool_placeholder(mcp_query_req)
-            logger.info(f"Placeholder MCP Response: {mcp_response}") # Log the placeholder response
+            # Call the actual MCP execution function from mcp_utils
+            mcp_response = await execute_mcp_tool(mcp_query_req)
+            logger.info(f"Real MCP Response: {mcp_response}") # Log the actual response
+
             if mcp_response.get("success"):
                 raw_result = mcp_response.get("result")
                 # Attempt to convert to DataFrame ONLY if it's a list of dicts
@@ -197,21 +198,39 @@ async def run_agent_graph_interface(
                         # Display error in a DataFrame format
                         mcp_result_display = pd.DataFrame({'Error': [f"Failed to display results: {df_e}"]})
                 elif isinstance(raw_result, str):
-                     # If it's just a string message, display that in a DataFrame
+                     # If it's just a string message, display that
                      mcp_result_display = pd.DataFrame({'Message': [raw_result]})
                      logger.info(f"MCP result is a string message: {raw_result}")
+                elif isinstance(raw_result, dict):
+                     # Handle dictionary results (e.g., single row or status)
+                     try:
+                          mcp_result_display = pd.DataFrame([raw_result]) # Wrap dict in a list
+                          logger.info("Converted single-row MCP result dict to DataFrame.")
+                     except Exception as df_e:
+                          logger.error(f"Failed to convert MCP result dict to DataFrame: {df_e}")
+                          mcp_result_display = pd.DataFrame({'Error': [f"Failed to display dict result: {df_e}"]})
                 # else: # If raw_result is None or empty list, mcp_result_display remains empty DataFrame
 
             else: # MCP call failed
-                error_msg = mcp_response.get('error', 'Placeholder MCP call failed.')
+                error_msg = mcp_response.get('error', 'MCP call failed.')
                 mcp_result_display = pd.DataFrame({'Error': [error_msg]})
                 logger.error(f"MCP call failed: {error_msg}")
         except Exception as mcp_e:
-            logger.error(f"Error calling placeholder MCP tool: {mcp_e}", exc_info=True)
-            mcp_result_display = pd.DataFrame({'Error': [f"Failed to execute query: {mcp_e}"]})
+            logger.error(f"Error calling execute_mcp_tool: {mcp_e}", exc_info=True)
+            mcp_result_display = pd.DataFrame({'Error': [f"Failed to execute query via MCP: {mcp_e}"]})
     else:
         logger.info("No MCP query request to execute.")
         # mcp_result_display remains empty DataFrame
+
+    # --- Execute Real MCP Log (Optional - Add later if needed) ---
+    # if mcp_log_req:
+    #     logger.info(f"Attempting to execute real MCP log request: {mcp_log_req}")
+    #     try:
+    #         log_response = await execute_mcp_tool(mcp_log_req) # Requires execute_mcp_tool to handle filesystem server
+    #         logger.info(f"Real MCP Log Response: {log_response}")
+    #     except Exception as log_e:
+    #         logger.error(f"Error calling execute_mcp_tool for logging: {log_e}", exc_info=True)
+    #         # Optionally update status or display error?
 
 
     # 6. Convert Langchain messages back to Gradio 'messages' format
