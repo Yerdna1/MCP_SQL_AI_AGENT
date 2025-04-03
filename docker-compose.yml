@@ -6,73 +6,101 @@ services:
       - "7860:7860" # Map host port 7860 to container port 7860 (Gradio)
     volumes:
       - ./app:/app/app # Mount the local 'app' directory into the container for development
-      - ./output.txt:/app/output.txt # Mount the output file
-      - ./schema.json:/app/schema.json # Mount the schema file (read-only ideally, but simple mount for now)
-      # We might need to mount credential files later for Gmail API
-      # - ./credentials.json:/app/credentials.json
-      # - ./token.json:/app/token.json
+      # Mount a host directory for ChromaDB persistence, using the path from settings
+      # Note: The host path needs to exist or have correct permissions.
+      # Example: ./chroma_data:/app/chroma_db (maps local ./chroma_data to /app/chroma_db in container)
+      # Ensure CHROMA_DB_PATH in .env matches the container path (e.g., /app/chroma_db)
+      - ./chroma_data:${CHROMA_DB_PATH:-/app/chroma_db} # Mount local dir to path specified in env/default
+
+      # Mount the directory where MCP filesystem server will write logs/saved SQL
+      # This needs to match the host path prefix used in app/utils/mcp_utils.py
+      # Example: ./mcp_data:/mcp_host_data (The python script will mount this into the MCP container's /data)
+      # The exact host path needs careful consideration based on where docker runs.
+      # For simplicity, let's assume the python script creates the dated host dir relative to where it runs.
+      # We might not need a volume mount here if the python script handles host paths correctly.
+
+      # We might need to mount credential files later for Gmail API or GDrive OAuth keys
+      # - ./credentials.json:/app/credentials.json # Example for Gmail
+      # - ./gcp-oauth.keys.json:/app/gcp-oauth.keys.json # Example for GDrive auth (if needed by NPX)
+
     env_file:
       - .env # Load environment variables from .env file
     environment:
       # Ensure Python outputs directly to console without buffering
       PYTHONUNBUFFERED: 1
-      # LangSmith/Langchain Tracing (if keys are set in .env)
+      # Pass environment variables explicitly (docker-compose v1/v2 compatibility)
+      # These will override env_file if both are set
       LANGCHAIN_TRACING_V2: ${LANGCHAIN_TRACING_V2:-false}
       LANGCHAIN_ENDPOINT: ${LANGCHAIN_ENDPOINT}
       LANGCHAIN_API_KEY: ${LANGSMITH_API_KEY}
       LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT}
-      # API Keys (will be read from .env)
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
-      # Gmail credentials file path (if needed)
-      # GMAIL_CREDENTIALS_FILE: /app/credentials.json
-      # GMAIL_TOKEN_FILE: /app/token.json
-      # ChromaDB Persistence Path
-      CHROMA_DB_PATH: /app/chroma_db
-    # Removed depends_on: db
+      # Pass all other required settings from .env
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      OPENAI_MODEL: ${OPENAI_MODEL}
+      GEMINI_MODEL: ${GEMINI_MODEL}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL}
+      AVAILABLE_LLMS: ${AVAILABLE_LLMS}
+      CHROMA_DB_PATH: ${CHROMA_DB_PATH:-/app/chroma_db} # Ensure container path matches volume mount
+      MCP_POSTGRES_COMMAND: ${MCP_POSTGRES_COMMAND}
+      MCP_POSTGRES_SCRIPT_PATH: ${MCP_POSTGRES_SCRIPT_PATH}
+      MCP_POSTGRES_CONN_STRING: ${MCP_POSTGRES_CONN_STRING}
+      MCP_FILESYSTEM_COMMAND: ${MCP_FILESYSTEM_COMMAND}
+      MCP_FILESYSTEM_IMAGE: ${MCP_FILESYSTEM_IMAGE}
+      MCP_FILESYSTEM_MOUNT_SOURCE_PREFIX: ${MCP_FILESYSTEM_MOUNT_SOURCE_PREFIX}
+      MCP_FILESYSTEM_MOUNT_TARGET: ${MCP_FILESYSTEM_MOUNT_TARGET}
+      MCP_FILESYSTEM_SERVER_ROOT: ${MCP_FILESYSTEM_SERVER_ROOT}
+      MCP_LOG_FILE_PATH: ${MCP_LOG_FILE_PATH}
+      MCP_SAVED_SQL_PATH: ${MCP_SAVED_SQL_PATH}
+      MCP_GDRIVE_SERVER_NAME: ${MCP_GDRIVE_SERVER_NAME}
+      MCP_GDRIVE_NPX_PACKAGE: ${MCP_GDRIVE_NPX_PACKAGE}
+      MCP_GDRIVE_DEFAULT_SEARCH_QUERY: ${MCP_GDRIVE_DEFAULT_SEARCH_QUERY}
+      # GMAIL_CREDENTIALS_FILE: ${GMAIL_CREDENTIALS_FILE}
+      # GMAIL_TOKEN_FILE: ${GMAIL_TOKEN_FILE}
+
     networks:
       - sql_agent_network
 
-  mcp_postgres:
-    image: mcp/postgres
-    container_name: mcp_postgres_server
-    restart: unless-stopped
-    networks:
-      - sql_agent_network
-    # Pass the connection URL via command. Get value from .env
-    # Example: postgresql://user:pass@host.docker.internal:5432/dbname
-    command: ["${POSTGRES_CONNECTION_URL}"]
-    # depends_on: # Optional: wait for DB if it's also in compose
-    #   - db # Uncomment this line ONLY if you define a 'db' service below
+# --- MCP Servers are now launched directly by the Python app via stdio_client ---
+# --- Commenting out the service definitions below ---
 
-  mcp_filesystem:
-    image: mcp/filesystem
-    container_name: mcp_filesystem_server
-    restart: unless-stopped
-    volumes:
-      # Mount the host file into /data inside the container
-      - ./output.txt:/data/output.txt
-    networks:
-      - sql_agent_network
-    # Allow the server to access the /data directory
-    command: ["/projects", "--allow", "/data"]
+#  mcp_postgres:
+#    image: mcp/postgres
+#    container_name: mcp_postgres_server
+#    restart: unless-stopped
+#    networks:
+#      - sql_agent_network
+#    command: ["${POSTGRES_CONNECTION_URL}"] # This assumes the image takes URL as command
 
-  mcp_gdrive:
-    image: mcp/gdrive
-    container_name: mcp_gdrive_server
-    restart: unless-stopped
-    volumes:
-      # Persistent volume for storing GDrive auth credentials after user auth flow
-      - mcp-gdrive:/gdrive-server
-      # Mount the OAuth keys file (user needs to provide this)
-      # - ./gcp-oauth.keys.json:/gcp-oauth.keys.json # Uncomment and adjust path if needed for auth command
-    networks:
-      - sql_agent_network
-    environment:
-      # Tell the server where to find credentials within the volume
-      GDRIVE_CREDENTIALS_PATH: /gdrive-server/credentials.json
-      # If running the auth command via docker exec, might need this:
-      # GDRIVE_OAUTH_PATH: /gcp-oauth.keys.json
+#  mcp_filesystem:
+#    image: mcp/filesystem # Use image from settings? No, image name is standard
+#    container_name: mcp_filesystem_server
+#    restart: unless-stopped
+#    volumes:
+#      # Mount a host directory to the target specified in settings
+#      - ./mcp_data:${MCP_FILESYSTEM_MOUNT_TARGET:-/data} # Example: ./mcp_data maps to /data in container
+#    networks:
+#      - sql_agent_network
+#    # Command uses the server root from settings
+#    command: ["${MCP_FILESYSTEM_SERVER_ROOT:-/data}", "--allow", "${MCP_FILESYSTEM_MOUNT_TARGET:-/data}"]
+
+#  mcp_gdrive:
+#    image: mcp/gdrive # Use standard image name
+#    container_name: mcp_gdrive_server
+#    restart: unless-stopped
+#    volumes:
+#      # Persistent volume for storing GDrive auth credentials after user auth flow
+#      - mcp-gdrive:/gdrive-server # Keep volume for credentials
+#      # Mount the OAuth keys file if needed for auth command run separately
+#      # - ./gcp-oauth.keys.json:/gcp-oauth.keys.json
+#    networks:
+#      - sql_agent_network
+#    environment:
+#      # Tell the server where to find credentials within the volume
+#      GDRIVE_CREDENTIALS_PATH: /gdrive-server/credentials.json
+#      # If running the auth command via docker exec, might need this:
+#      # GDRIVE_OAUTH_PATH: /gcp-oauth.keys.json
 
 # Optional: Define a PostgreSQL database service if you want it containerized
 #  db:
@@ -91,8 +119,8 @@ services:
 #      - "5432:5432"
 
 volumes:
-  chroma_data: # For RAG vector store persistence
-  mcp-gdrive: # For GDrive auth credential persistence
+  # chroma_data: # Using host mount instead
+  mcp-gdrive: # Keep volume for GDrive auth credential persistence if needed
 #  postgres_data: # Add this if using the 'db' service above
 
 networks:

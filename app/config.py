@@ -69,6 +69,13 @@ class Settings(BaseModel):
     mcp_log_file_path: str = Field("output.txt", env='MCP_LOG_FILE_PATH')
     mcp_saved_sql_path: str = Field("successful_queries.sql", env='MCP_SAVED_SQL_PATH')
 
+    # GDrive Server Details (NPX based)
+    mcp_gdrive_server_name: str = Field("gdrive", env='MCP_GDRIVE_SERVER_NAME') # Name used in MCP config
+    mcp_gdrive_npx_package: str = Field("@modelcontextprotocol/server-gdrive", env='MCP_GDRIVE_NPX_PACKAGE')
+    # Default query for the search tool (can be specific folder, file type etc.)
+    # Example: "mimeType='application/vnd.google-apps.document' and 'MyFolderName' in parents"
+    mcp_gdrive_default_search_query: str = Field("", env='MCP_GDRIVE_DEFAULT_SEARCH_QUERY')
+
 
     class Config:
         # Keep env_file for potential fallback or other variables, but load_dotenv should take precedence

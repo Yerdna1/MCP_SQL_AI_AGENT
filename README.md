@@ -116,7 +116,7 @@ graph TD
 *   **Pydantic:** For data validation and settings management (`app/config.py`).
 *   **python-dotenv:** For loading environment variables from `.env` (see `.env.example`).
 *   **Pandas:** For displaying query results in the Gradio UI.
-*   **Docker / Docker Compose:** For containerization (requires running MCP servers separately or including them in compose).
+*   **Docker / Docker Compose:** For containerizing the main application. MCP servers are launched directly by the Python application using configured commands (e.g., `node`, `docker run`, `npx`).
 
 ## Setup & Running
 
@@ -153,9 +153,19 @@ graph TD
     ```
 
 5.  **Run the Application:**
-    *   **Ensure MCP Servers are Running:** Start your `mcp_postgres` and `mcp_filesystem` servers (e.g., via Docker Compose, separate terminals, etc.).
-    *   **Run the Gradio App:**
-        ```bash
+    *   **Ensure MCP Server Prerequisites are Met:**
+        *   Node.js installed (for `mcp_postgres`).
+        *   Docker installed and running (for `mcp_filesystem`).
+        *   NPX available (usually comes with Node.js) (for `mcp_gdrive`).
+        *   GDrive server authenticated separately if using GDrive features (see GDrive server docs).
+    *   **Run the Gradio App (Docker Compose Recommended):**
+        *   Ensure your `.env` file is correctly configured.
+        *   Run: `docker-compose up --build`
+        *   The application service will start, and the Python code within it will attempt to launch the configured MCP servers via `stdio_client`. Check the container logs for any errors related to MCP server startup.
+    *   **Alternatively, Run Locally (Requires Manual MCP Server Startup):**
+        *   Start the `mcp_postgres`, `mcp_filesystem`, and `mcp_gdrive` servers manually in separate terminals according to their respective documentation and the paths/commands configured in your `.env` file.
+        *   Run the Gradio app directly:
+            ```bash
         # Ensure any previous instances are stopped
         # On Windows: taskkill /F /IM python.exe /T
         # On macOS/Linux: pkill -f 'python -m app.main'
@@ -171,4 +181,4 @@ graph TD
 *   **RAG GDrive Population:** Populating the RAG knowledge base from Google Drive documents requires manual steps using an MCP client, as detailed in the UI when clicking the "Prepare GDrive KB Population" button. The `populate_gdrive_kb` function only prepares the initial search request.
 *   **Error Handling:** UI feedback for MCP connection errors, query execution errors, or graph failures could be more specific and user-friendly.
 *   **Security:** The human-in-the-loop step adds a layer of safety, but ensure the MCP server's database connection uses appropriately restricted permissions.
-*   **Docker Compose:** The provided `docker-compose.yml` needs review to ensure it correctly sets up the application *and* the required MCP servers with appropriate volumes and environment variables, passing necessary configurations.
+*   **MCP Server Management:** The application now directly manages MCP server processes via `stdio_client`. Ensure the commands and paths in the settings (`.env`) are correct for your environment. Errors during MCP server startup will appear in the application's logs.

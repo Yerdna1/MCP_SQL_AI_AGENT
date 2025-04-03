@@ -158,6 +158,13 @@ MCP_FILESYSTEM_PARAMS = StdioServerParameters(
     ],
     env=None
 )
+
+# GDrive Params (NPX based)
+MCP_GDRIVE_PARAMS = StdioServerParameters(
+    command="npx",
+    args=["-y", settings.mcp_gdrive_npx_package],
+    env=None # Assumes OAuth keys/credentials are in default locations relative to execution
+)
 # --- End MCP Server Params ---
 
 
@@ -176,6 +183,8 @@ async def execute_mcp_tool(request: Dict[str, Any]) -> Dict[str, Any]:
          server_params = MCP_POSTGRES_PARAMS
     elif server_name == "mcp_filesystem": # Match the name used in prepare_mcp_log_request
          server_params = MCP_FILESYSTEM_PARAMS
+    elif server_name == settings.mcp_gdrive_server_name: # Use name from settings
+         server_params = MCP_GDRIVE_PARAMS
     else:
          error_msg = f"Unknown MCP server name specified in request: {server_name}"
          logger.error(error_msg)
@@ -344,3 +353,30 @@ async def fetch_dynamic_schema() -> Tuple[Optional[Dict[str, Any]], Optional[str
         error_msg = f"Error processing fetched schema data: {e}"
         logger.error(error_msg, exc_info=True)
         return None, error_msg
+
+
+# --- MCP Resource Access ---
+async def access_mcp_resource(server_name: str, resource_uri: str) -> Dict[str, Any]:
+    """
+    Accesses a resource provided by an MCP server.
+    Currently placeholder - needs actual implementation using mcp library's
+    resource access methods if available, or potentially adapting execute_mcp_tool
+    if resource access is exposed via a 'read_resource' tool convention.
+
+    Args:
+        server_name: The name of the MCP server providing the resource.
+        resource_uri: The URI of the resource to access.
+
+    Returns:
+        A dictionary containing success status and result/error.
+    """
+    logger.warning(f"Placeholder: Attempting to access MCP resource. Server='{server_name}', URI='{resource_uri}'")
+    # This requires the mcp library's specific API for resource access,
+    # which might differ from tool calls.
+    # For now, return a placeholder error indicating it's not implemented.
+    return {
+        "success": False,
+        "error": f"Resource access for server '{server_name}' not implemented in this utility function."
+        # In a real implementation, you'd use session.read_resource(uri=resource_uri)
+        # after establishing a connection similar to execute_mcp_tool.
+    }
