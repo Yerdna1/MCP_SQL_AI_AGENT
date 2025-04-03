@@ -86,7 +86,7 @@ graph TD
         J --> K{Return final_state}
         K --> L[Display SQL & Requests]
         L --> Q{User Clicks 'Execute Approved SQL'}
-        Q --> M(execute_approved_sql_handler) %% Trigger handler
+        Q --> M(execute_approved_sql_handler)
         
         subgraph execute_approved_sql_handler
             direction TB
