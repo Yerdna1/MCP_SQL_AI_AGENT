@@ -56,10 +56,9 @@ The agent's logic is defined as a state machine using **LangGraph**. The core wo
 8.  **Gradio UI & MCP Execution (`app/main.py`):**
     *   Displays the chat history, agent thoughts, SQL, and prepared MCP requests.
     *   Calls the `execute_mcp_tool` function (from `app/utils/mcp_utils.py`) to perform real MCP interactions for:
-        *   Database queries (`mcp_postgres` server).
-        *   Database queries (`mcp_postgres` server) **after user approval**.
-        *   Appending SQL/errors to log file (`mcp_filesystem` server's `append_file` tool) **after successful execution**.
-        *   Appending successfully executed SQL to `successful_queries.sql` (`mcp_filesystem` server's `append_file` tool) **after successful execution**.
+        *   Database queries (`mcp_postgres` server) **after user approval via the 'Execute Approved SQL' button**.
+        *   Appending SQL/errors to log file (`mcp_filesystem` server's `append_file` tool) **after successful query execution**.
+        *   Appending successfully executed SQL to `successful_queries.sql` (`mcp_filesystem` server's `append_file` tool) **after successful query execution**.
     *   Displays query results (or errors) received from the MCP server in a DataFrame.
     *   Adds logging and SQL saving status/errors to the execution status display.
 
@@ -86,13 +85,14 @@ graph TD
         H --> J;
         J --> K{Return final_state};
         K --> L[Display SQL & Requests];
-        L --> Q{User Approves?};
-        Q -- Yes --> M(execute_mcp_tool for Query);
-        M -- Success --> N(execute_mcp_tool for Log);
-        N --> R(execute_mcp_tool for Save SQL);
+        L --> Q{User Clicks 'Execute Approved SQL'};
+        Q -- Click --> M(execute_approved_sql_handler);
+        M --> M1(execute_mcp_tool for Query);
+        M1 -- Success --> N(execute_mcp_tool for Log);
+        N -- Success --> R(execute_mcp_tool for Save SQL);
         R --> P[Format Results/Errors];
-        M -- Failure --> P;
-        Q -- No --> P; # User doesn't approve, just format status
+        M1 -- Failure --> P;
+        N -- Failure --> R; # Log failure doesn't stop save
         P --> O[Update Gradio UI];
     end
 
@@ -168,7 +168,7 @@ graph TD
 ## Limitations & Future Work
 
 *   **DML/DDL Unsupported:** The agent only supports `SELECT` queries due to intent classification and the assumed read-only nature of the MCP postgres `query` tool.
-*   **RAG GDrive Population:** Populating the RAG knowledge base from Google Drive documents is not implemented (the `populate_gdrive_kb` function is a placeholder).
+*   **RAG GDrive Population:** Populating the RAG knowledge base from Google Drive documents requires manual steps using an MCP client, as detailed in the UI when clicking the "Prepare GDrive KB Population" button. The `populate_gdrive_kb` function only prepares the initial search request.
 *   **Error Handling:** UI feedback for MCP connection errors, query execution errors, or graph failures could be more specific and user-friendly.
-*   **Security:** While a human-in-the-loop step is added, ensure the MCP server's database connection uses appropriately restricted permissions.
+*   **Security:** The human-in-the-loop step adds a layer of safety, but ensure the MCP server's database connection uses appropriately restricted permissions.
 *   **Docker Compose:** The provided `docker-compose.yml` needs review to ensure it correctly sets up the application *and* the required MCP servers with appropriate volumes and environment variables, passing necessary configurations.

@@ -30,7 +30,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from .graph.state import AgentState
 from .graph.builder import compiled_graph
 from .rag.retriever import initialize_rag, rag_initialized, initialization_error as rag_init_error
-from .rag.kb_manager import add_sql_examples_to_db
+from .rag.kb_manager import add_sql_examples_to_db, populate_gdrive_kb # Import populate_gdrive_kb
 from .utils.mcp_utils import execute_mcp_tool, fetch_dynamic_schema, prepare_mcp_save_sql_request, prepare_mcp_read_file_request, prepare_mcp_log_request # Added prepare_mcp_log_request
 
 # --- Global variables for initialized components ---
@@ -391,7 +391,8 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
 
     # KB Update Controls
     with gr.Row():
-         update_kb_button = gr.Button("Update SQL KB from Saved Queries")
+         update_sql_kb_button = gr.Button("Update SQL KB from Saved Queries")
+         gdrive_kb_button = gr.Button("Prepare GDrive KB Population (Manual Steps)") # New button
          kb_status = gr.Textbox(label="KB Update Status", interactive=False)
 
     # --- Event Handlers ---
@@ -416,7 +417,9 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         api_name="execute_approved_sql"
     )
 
-    update_kb_button.click(fn=update_sql_kb_handler, inputs=[], outputs=[kb_status], api_name="update_sql_kb")
+    update_sql_kb_button.click(fn=update_sql_kb_handler, inputs=[], outputs=[kb_status], api_name="update_sql_kb")
+    # Connect the GDrive button to the placeholder function which now returns instructions
+    gdrive_kb_button.click(fn=populate_gdrive_kb, inputs=[], outputs=[kb_status], api_name="populate_gdrive_kb")
     submit_button.click(lambda: "", inputs=[], outputs=[query_input]) # Clear input
 
 # --- Launch App ---
